@@ -5,6 +5,10 @@
 
 > **Not production software.** This is a teaching implementation. Its shortcuts are listed in [Production differences](#h-production-differences).
 
+**Further documentation:**
+- [OAUTH-GUIDE.md](OAUTH-GUIDE.md): every OAuth 2.0 and SMART on FHIR concept in this app, how each one is implemented, and how the sandbox actually behaves.
+- [RUN-AND-DEMO.md](RUN-AND-DEMO.md): installing, running and checking the app, plus a click-by-click presenter script for all six failure demos.
+
 ---
 
 ## A. What this is
