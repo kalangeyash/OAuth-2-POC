@@ -12,7 +12,7 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: true,
       // The browser talks only to this origin. These paths are forwarded to the Node OAuth client.
-      proxy: { "/api": nodeServer, "/auth": nodeServer, "/demo": nodeServer, "/launch": nodeServer },
+      proxy: { "/api": nodeServer, "/auth": nodeServer, "/demo": nodeServer, "/launch": nodeServer, "/lab": nodeServer },
       // The wire log imports the shared redaction helper from server/src.
       fs: { allow: [".."] },
     },

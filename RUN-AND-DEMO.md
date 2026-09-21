@@ -2,7 +2,7 @@
 
 > **DEMO / SYNTHETIC DATA.** The sandbox contains synthetic patients only. Never type real patient information into it.
 
-This is the operator's manual: how to install and run the project, how to check it works before an audience sees it, and a click-by-click script for presenting it — including all six failure demos, what each one really does on this sandbox, and what to say.
+This is the operator's manual: how to install and run the project, how to check it works before an audience sees it, and a click-by-click script for presenting it with the **OAuth Protocol Lab**: stepping through the flow one real message at a time, and all ten failure scenarios, with what each one really does on this sandbox and what to say.
 
 For the concepts behind every step, see [OAUTH-GUIDE.md](OAUTH-GUIDE.md).
 
@@ -15,9 +15,9 @@ For the concepts behind every step, see [OAUTH-GUIDE.md](OAUTH-GUIDE.md).
 5. [How the pieces connect](#5-how-the-pieces-connect)
 6. [Commands and configuration](#6-commands-and-configuration)
 7. [Preparing the room](#7-preparing-the-room)
-8. [A tour of the screen](#8-a-tour-of-the-screen)
+8. [A tour of the Protocol Lab](#8-a-tour-of-the-protocol-lab)
 9. [The presentation script](#9-the-presentation-script)
-10. [Running each failure demo](#10-running-each-failure-demo)
+10. [The failure lab: ten scenarios](#10-the-failure-lab-ten-scenarios)
 11. [Optional extras that land well](#11-optional-extras-that-land-well)
 12. [Resetting between runs](#12-resetting-between-runs)
 13. [When something goes wrong live](#13-when-something-goes-wrong-live)
@@ -34,7 +34,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Open **http://localhost:5173** — `localhost`, not `127.0.0.1`. Click **Connect**, pick a patient on the sandbox login page (e.g. *Abdul Koepp*), click **Approve**, then **Load patient and labs**.
+Open **http://localhost:5173** — `localhost`, not `127.0.0.1`. Press **▶ Run scenario** (scenario 1), pick a patient on the sandbox login page that opens in a popup (e.g. *Abdul Koepp*), click **Approve**, then open the **App** tab and click **Load patient and labs**.
 
 ---
 
@@ -102,7 +102,7 @@ The `[wire #1 …] SMART discovery … → 200` line is the important one: it pr
 
 ### 3.4 Stop
 
-`Ctrl+C` in the terminal stops both processes. All sessions, tokens and the wire log are in memory and disappear.
+`Ctrl+C` in the terminal stops both processes. All sessions, tokens and the event log are in memory and disappear.
 
 ---
 
@@ -110,17 +110,17 @@ The `[wire #1 …] SMART discovery … → 200` line is the important one: it pr
 
 Run through this once on the machine and network you will present from, ideally shortly before. It takes about three minutes.
 
-- [ ] `npm test` → `tests 15`, `pass 15`, `fail 0`
+- [ ] `npm test` → `tests 67`, `pass 67`, `fail 0`
 - [ ] `npm run dev` → the terminal shows `SMART discovery … → 200`
-- [ ] http://localhost:5173 loads; the amber **DEMO / SYNTHETIC DATA** banner is at the top; status reads **Not connected**; the flow band reads **Nothing has started yet**
+- [ ] http://localhost:5173 loads; the amber **DEMO / SYNTHETIC DATA** banner is at the top; status reads **Not connected**; the toolbar shows **● Live** (the event stream is connected)
 - [ ] Click the **Dark** / **Light** toggle once and check the room can read both; leave it on the one you want
-- [ ] The **SMART discovery** panel shows an `authorization_endpoint`, a `token_endpoint` and `S256`
-- [ ] Click **Connect** → the sandbox login page appears
-- [ ] Pick a patient, log in, click **Approve** → back at the app; status reads **Connected**
-- [ ] Click **Load patient and labs** → a patient banner and a lab table appear
-- [ ] The flow band reads **All nine steps completed**, and the left rail shows all nine steps with ✓
-- [ ] Click **Force token expiry** → the result reads `FHIR request → HTTP 401 → Refresh token → new access token → FHIR retry → HTTP 200`
-- [ ] Click **Log out**, then **Clear log** → you are back to a clean start
+- [ ] **App** tab: the **SMART discovery** panel shows an `authorization_endpoint`, a `token_endpoint` and `S256`
+- [ ] **▶ Run scenario** (scenario 1) → a popup opens on the sandbox login page, and the canvas shows the redirect *while* it happens. (If your browser blocks popups, allow them for localhost, or untick *View options → Login in a popup window*.)
+- [ ] Pick a patient, log in, click **Approve** → the popup closes by itself; status reads **Connected**; the state machine reaches `PATIENT_CONTEXT_RESOLVED`
+- [ ] **App** tab → **Load patient and labs** → a patient banner and a lab table appear; the state machine reaches `DATA_RENDERED`
+- [ ] **Step through every stage**, then **▶ Run scenario** → the canvas shows an amber *NOT SENT* arrow and the inspector says **BEFORE SEND**; **→** sends one stage at a time; **Run to the end** finishes
+- [ ] **Tokens** tab → **Force token expiry** → the chain lights *expires → 401 → refresh → new token → retried*
+- [ ] **Reset all** → you are back to a clean start
 
 If all boxes tick, the demo will work in the room — provided the room has the same network access.
 
@@ -131,7 +131,7 @@ If all boxes tick, the demo will work in the room — provided the room has the 
 ```
   Your browser ──► http://localhost:5173  (Vite dev server: serves the React UI)
                           │
-                          │  proxies /api, /auth, /demo, /launch
+                          │  proxies /api, /auth, /demo, /lab, /launch
                           ▼
                    http://localhost:3001  (Node/Express: THE OAuth client)
                           │
@@ -191,240 +191,249 @@ Replace `http://localhost:3001/callback` with your new redirect URI, and put the
 - [ ] Run the [smoke test](#4-smoke-test-before-any-audience) on the presenting laptop.
 - [ ] Confirm the venue network reaches `launch.smarthealthit.org`. Corporate networks sometimes block it. **Have a phone hotspot as a fallback** — there is no offline mode.
 - [ ] Read [OAUTH-GUIDE.md §12](OAUTH-GUIDE.md#12-questions-an-audience-will-ask) for the questions people usually ask.
-- [ ] Decide which demos you will run. The core script uses three; all six take about 16 minutes.
+- [ ] Decide which scenarios you will run. The core script uses the debugger plus three failures; all ten scenarios take about 20 minutes.
+- [ ] Allow popups for `localhost` in the presenting browser (the login opens in a popup so the lab stays on screen).
 
 ### 7.2 Ten minutes before
 
 - [ ] Close other browser tabs; turn on Do Not Disturb.
 - [ ] `npm run dev` in a terminal you can reach but that is **not** on the projector.
 - [ ] Open http://localhost:5173 in a fresh window. Make it full screen (Chrome on macOS: `Ctrl+Cmd+F`).
-- [ ] If you were logged in during the smoke test, click **Log out**.
-- [ ] Click **Clear log** in the wire log pane, and set the wire-log filter back to **All**.
+- [ ] Press **Reset all** (logs out, releases any pause, clears the log), check the execution mode reads **Run automatically**, and clear any Traffic filters.
+- [ ] Leave **Essentials** on; switch to **Everything** only when you want to show the routine internal steps.
 - [ ] Set light or dark for the room. The choice is remembered, so do it once.
 
 ### 7.3 Projector fit
 
-- The layout is three columns at **1280 px and above**. Between about 1180 px and 1280 px the left step rail folds away and the flow band across the top carries the "where are we" job on its own; below about 900 px everything stacks into one column. On a low-resolution projector, zoom out (`Cmd −` / `Ctrl −`) until the three columns return.
+- The lab fits on one screen at about **1440×900 and above**: canvas and dock on the left, inspector on the right. On shorter or narrower screens (below 760 px tall or 1100 px wide) it becomes one scrolling column instead of squeezing. On a low-resolution projector, zoom out (`Cmd −` / `Ctrl −`), hide the inspector (**I**), or give the dock more room with **▲ Taller**.
 - The base font is 19 px, designed to be read from the back of a room. `Cmd +` enlarges everything if the room is large.
 - **Pick the theme for the room before you start.** The toggle is in the header, next to the connection status. Dark reads better on a bright projector in a dark room; light is safer on a washed-out screen. The choice is remembered.
-- Check the room from the back once. **The layout has only been checked in headless Chrome at 1920×1080**, not on a real projector.
+- Check the room from the back once. **The layout has only been checked in headless Chrome** (1440×900, 1280×720 and 1280×1100), not on a real projector.
 
 ---
 
-## 8. A tour of the screen
+## 8. A tour of the Protocol Lab
+
+The screen is organised around the protocol, not around the patient data. Everything on it is drawn from **real events** the Node server records and streams to the page (Server-Sent Events on `/api/events`); nothing is a pre-recorded animation.
 
 ```
-┌───────────────────────────────────────────────────────────────────────────────┐
-│  DEMO / SYNTHETIC DATA  (amber banner)                                         │
-├───────────────────────────────────────────────────────────────────────────────┤
-│  SMART on FHIR: the OAuth 2.0 …      ● Not connected   [Dark]   [Log out]      │
-├───────────────────────────────────────────────────────────────────────────────┤
-│ ▌Nothing has started yet                              0 of 9 steps done ▁▁▁▁  │  ← FLOW BAND
-│ ▌Click Connect. The Node server builds an authorization request, then …       │
-├──────────────┬──────────────────────────────┬─────────────────────────────────┤
-│ OAuth flow   │ Application                  │ Wire log                        │
-│              │                              │  [All][Front][Back][Errors]     │
-│ 1 Connect    │ Connect / Authorization      │ Browser │ Node │ Auth │ FHIR    │
-│ 2 Redirect   │ Patient + ID token           │ #40 t+5.8s Redirect back     —  │
-│ 3 Login      │ Requested vs granted scope   │    ┊◄──────────┊                │
-│ 4 Consent    │ Lab results                  │ #42 t+6.8s Token exch 1019ms 200│
-│ 5 Callback   │ SMART discovery              │         │─────────►│            │
-│ ┌BACK CHANNEL│                              │           200 · 1019 ms         │
-│ │6 Token exch│ BREAK SOMETHING              │ [Expand all] [Collapse all]     │
-│ │7 Token recv│  six demo buttons + result   │ [Clear log]                     │
-│ └────────────│                              │                                 │
-│ 8 FHIR call  │                              │                                 │
-│ 9 Rendered   │                              │                                 │
-└──────────────┴──────────────────────────────┴─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ DEMO / SYNTHETIC DATA (amber banner)                                            │
+│ SMART on FHIR · OAuth 2.0 Protocol Lab           ● Not connected  [Light]       │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ [1. Successful … ▾] [▶ Run scenario]  [Run automatically|Step every stage|Pause │
+│ at every message]  [⏸ Pause] [⏭ Next step] [■ Stop]  [⟲ Reset] [Reset all] ●Live│
+│ ┄ FRONT  ─ BACK  ┈ LOCAL  ┄ HELD (amber)        [Essentials|Everything] [View ▾]│
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ RIGHT NOW · Step 13 of 21 · Exchange authorization code for tokens              │
+│ Token exchange — one plain sentence about what is happening                     │
+│ ✓ 8 states complete → STATE_VALIDATED → CODE_EXCHANGED → …   (state machine)    │
+├──────────────────────────────────────────────┬──────────────────────────────────┤
+│ LIVE PROTOCOL CANVAS                         │ MESSAGE INSPECTOR                │
+│  Browser  React UI  Node BFF  Auth   FHIR    │ #96 Token exchange               │
+│     ┊──── GET /callback?code…&state… ──►┊    │ Node BFF → Auth server · BACK    │
+│                       ⟲ State validation     │ ▸ What this means                │
+│                       ├── POST /auth/token ─►│ ▸ Request (every parameter)      │
+│                       │◄── 200 · 312 ms ─────│ ▸ Response (status, body, error) │
+├──────────────────────────────────────────────┤ ▸ Why this happens               │
+│ Traffic │ Timeline │ Request builder │ PKCE │ │ ▸ Security · preconditions       │
+│ State/CSRF │ Browser view │ Tokens │ Patient │ │ ▸ Implementation reference       │
+│ context │ Failure lab │ App                  │   (real file + function)         │
+└──────────────────────────────────────────────┴──────────────────────────────────┘
 ```
 
-| Pane | What to point at |
+| Area | What it is, and what to point at |
 |---|---|
-| **Banner** | The synthetic-data warning. Mention it once at the start. It stays full-strength amber in both themes on purpose |
-| **Status** (top right) | `Not connected` → `Waiting for the authorization server` (amber) → `Connected` (green). Red `Node server unreachable` means `npm run dev` stopped. Next to it: the light/dark toggle |
-| **Flow band** (full width) | **The one thing to point at when someone asks "where are we?"** A headline, one plain sentence, and how many of the nine steps are done. It is the only part of the screen that speaks in sentences, and it has a state of its own for *"your browser is at the authorization server"* — the interval this app cannot observe, because login and consent happen somewhere else |
-| **OAuth flow** (left) | The nine steps and who performs each. ✓ done, ✕ failed, a number means not reached. Steps 6–7 are grouped as **BACK CHANNEL**. **Updated from server events, not button clicks** — say this, it's what makes the rail trustworthy. This rail is the part that folds away on a narrow window; the band does not |
-| **Application** (centre) | Before connecting: the Connect card, the scopes this client *will ask for*, and SMART discovery. After: authorization facts, patient, ID token, scope comparison, labs. Always at the bottom: **BREAK SOMETHING** |
-| **Wire log** (right) | A live sequence diagram. Four lanes: **Browser, Node client, Authorization server, FHIR server**. **Dashed arrows** = browser redirects (front channel). **Solid arrows** = direct HTTP (back channel). Red = error. Hatched values are redacted. Each row is one request *and* its response: the `#id`, `t+` elapsed since Connect, the step, the round-trip time and the status line up in columns so the log can be read while it streams. A dotted return leg under each arrow carries the status and duration back to the caller |
-| **Wire log controls** | **All / Front channel / Back channel / Errors** filter the list. Clicking an entry expands it into **Request** and **Response** side by side. **Focus this exchange** dims everything else *in place* — the surrounding sequence stays visible, and new entries stop stealing the scroll. `Escape` clears it |
+| **Lab toolbar, row 1** | **Scenario selector + Run scenario** (ten scenarios, §10). **Execution mode**: *Run automatically* (the normal app), *Step through every stage* (the backend pauses before every stage, internal ones included) or *Pause at every message* (it pauses only before real network messages). **Pause / Resume / Next step / Stop** act on the real server. **Reset** releases any pause and clears the log; **Reset all** also logs out. **Live** means the event stream is connected |
+| **Lab toolbar, row 2** | The **legend**, always visible: dashed = front channel (through the browser), solid = back channel (server to server), dotted = local application event, amber dashed = a request the debugger is holding and has **not** sent. **Essentials / Everything**: Essentials (default) hides routine steps inside Node such as "generate state" or "store session"; Everything shows every recorded step. **View options** holds the rest: inspector, technical details, security explanations, source-code references, "inspector follows new messages", failure injection, login in a popup, freeze the display |
+| **Right now** | One sentence a non-expert can follow, updated by every real event. It says *PAUSED BEFORE SEND* when the debugger holds a request, *REPLAY · recorded 14:03:22 — not live* when you replay a step, and *The user is logging in and consenting* while the browser is at the authorization server. Underneath: the **protocol state machine** (`IDLE → DISCOVERY_COMPLETE → … → DATA_RENDERED`). When a flow fails it names where, and what was therefore never attempted, e.g. `STATE_VALIDATION_FAILED → TOKEN_EXCHANGE_NOT_ATTEMPTED` |
+| **Live protocol canvas** | A sequence diagram with five lifelines: **Browser, React UI, Node BFF, Authorization server, FHIR server**. A redirect is two dashed legs (Node ┄302┄► Browser ┄GET┄► Auth server). A back-channel call is a solid request plus a thin response carrying the status and duration. Steps inside Node are small loops. Login and consent appear as a shaded block on the authorization server: *not visible to this app*. Green = succeeded, red = failed, amber = held by the debugger. The left gutter shows the time since the previous message. Only messages that arrive live animate. The canvas follows the newest message unless you scroll up; then a **↓ Jump to latest** button appears. Click any arrow to inspect it |
+| **Message inspector** | Everything about the selected message: sender and receiver, channel, the full URL, every parameter, headers, the response status and body (secrets redacted), the provider's `error` and `error_description`, and *what it enables next*. Then *why it exists*, *what would go wrong without it*, the specification, whether the browser can see it, whether it is sensitive, preconditions, possible outcomes, and the **implementation reference**: the real file and function in this repository. Every OAuth value is clickable (*Explain this value*). **← / →** move between messages; **Pin**, **Compare** and **Copy (sanitized)** are here too |
+| **Before send** (inspector, when paused) | The request exactly as the server built it but has **not sent**, with a table explaining every parameter, and **Send request ▶**, **Run to the end**, **Stop the flow**. With failure injection on, it offers the controlled changes available at that step, e.g. *Alter code_verifier* |
+| **Dock: Traffic** | A DevTools-style network monitor: time, actor, method, URL, channel, status, duration and a security column. It has search, actor, channel and result filters, **pin**, **compare two messages** side by side (differences highlighted) and **Export sanitized trace** (JSON) |
+| **Dock: Timeline** | The 21 protocol steps grouped by phase. ✓ done, ✕ failed, ● in progress, ◌ *inferred* (login and consent, which this app cannot see), ⊘ skipped or not reached. Expand a step to read what it does, jump to its events, or **Replay this explanation** |
+| **Dock: Request builder** | The authorization URL broken into fields: value, required or optional, what it is, security impact, what happens if it changes. Tick whitelisted changes (remove state, change redirect_uri, remove code_challenge, `plain` method, broader scope, change aud, invalid scope) and press **Generate authorization request** to send the real, modified request |
+| **Dock: PKCE** | The real run shown by length and fingerprint only (verifier → SHA-256 → base64url → challenge → sent → verifier sent → Node's own check → the authorization server's verdict). Below it is a clearly labelled **illustrative** workbench that computes SHA-256 in your browser on a *synthetic* verifier, including the RFC 7636 Appendix B example |
+| **Dock: State / CSRF** | Generated, stored and returned state side by side (preview and fingerprint), a big **MATCH / MISMATCH**, whether a token exchange was attempted, and the attack narrative drawn from this run's events |
+| **Dock: Browser view** | *What can the browser see?* Two lists (visible to the browser / never exposed to page JavaScript), plus a DevTools-style view filled from **real** values: the session cookie's real attributes (value hidden), `document.cookie` as page JavaScript sees it (empty), and the real `localStorage` and `sessionStorage` keys. It also runs a live scan for anything token-like |
+| **Dock: Tokens** | Token metadata only (never a value), the three tokens compared (purpose, issuer, recipient, lifetime, storage, whether the browser sees it, whether it goes to FHIR, whether it calls APIs, whether it proves identity), the lifecycle chain lit by real events, and **Force token expiry**, **Disable refresh**, **Simulate refresh failure** and **Compare original and refreshed requests**. The decoded ID token is here (signature **not** verified) |
+| **Dock: Patient context** | Where the patient ID came from (the token response), each hop from consent to screen, and a button that sends the real request `GET /api/patient?patient=123` so you can show that it is ignored |
+| **Dock: Failure lab** | The ten scenarios with their initial conditions, the attack, the concept and the mitigation, and after a run an **eight-part result** built from the real events: what changed, what should have happened, the modified request, the actual request sent, the response, **where the flow stopped**, why it matters, and the concept and mitigation |
+| **Dock: App** | The ordinary application: Connect, the patient banner, lab results, requested vs granted scope and SMART discovery |
 
-**A note on timing.** Two different numbers appear, deliberately in different columns. `1019 ms` is the real round trip the Node server measured — it only ever appears on entries where the server actually made an outbound request. `t+6.8s` is wall-clock time since **Connect**, so it includes however long you spent typing on the sandbox's login page. Entries with no network traffic of their own — the state check, "token received" — show `—` rather than a blank, because a blank would suggest a missing response rather than no request at all.
+**Presenter shortcuts** (press **?** for the list): **Space** pause/resume the backend · **→** next step at a breakpoint, otherwise the next message · **←** previous message · **R** run the selected scenario · **F** failure lab · **T** timeline · **I** inspector · **S** security explanations · **D** technical details · **E** Essentials/Everything · **Esc** leave a replay. Shortcuts are ignored while you type, and **Space** still presses a focused button.
+
+**What "real" means here.** Every arrow, status, error and timing comes from an event the Node server recorded as it happened. Three things are *inferred* and labelled so: login and consent (this app cannot see them; they are inferred when a code arrives), and the authorization server's PKCE hash comparison (you see its verdict, the HTTP response, not the comparison itself). The PKCE workbench's values are illustrative and say so. Scenario 10 (SPA vs BFF) is an illustration and is never executed.
 
 ---
 
 ## 9. The presentation script
 
-A ten-minute core, then optional extensions. Timings are a guide. **Click** is what you do; **Show** is what appears; **Say** is the point to make.
+About twelve minutes, then optional extensions. Timings are a guide. **Click** is what you do; **Show** is what appears; **Say** is the point to make.
+
+**Before you start:** `npm run dev`, open http://localhost:5173 full screen, press **Reset all**, leave **Essentials** on, and check that **View options → Login in a popup window** is ticked (it is by default). With the popup, the lab stays on screen while you log in, so the audience sees every step live.
 
 ### 0:00 — The setup
 
-**Show:** the whole screen, clean, not connected. The flow band reads *Nothing has started yet*.
+**Show:** the clean lab. *Right now* reads *Nothing has happened yet*.
 
 **Say:**
-- "This is a teaching demo against a public sandbox with synthetic patients." *(point at the banner)*
-- "This strip is where we are." *(point at the flow band)* "It tells you in one sentence what just happened, the whole way through. If you lose the thread, read that line."
-- "Four actors, four columns in the wire log: the browser, our Node server, the authorization server, and the FHIR server with the data."
-- "The key design decision: **the Node server is the OAuth client, not the browser.** The browser will never hold a token. I'll prove that later."
-- "Dashed arrows go through the browser — anyone can see those. Solid arrows are server-to-server."
+- "A teaching lab against a public sandbox with synthetic patients." *(banner)*
+- "Five actors, five lifelines: the browser, our React app, our Node server, the authorization server, and the FHIR server with the data."
+- "The key design: **our Node server is the OAuth client.** The browser never holds a token. I'll prove it later."
+- "Dashed means through the browser, where anyone can see it. Solid means server to server."
+- "And this is not an animation. We can stop the backend before every single step."
 
-### 1:00 — Discovery
+### 1:00 — Step through the start of the flow
 
-**Show:** the **SMART discovery** panel and the first wire-log entry, *SMART discovery*. Expand it.
+**Click:** execution mode **Step through every stage**, then **▶ Run scenario** (scenario 1 is selected). The popup opens and stays blank: the backend is holding it.
 
-**Say:**
-- "Before anything else, the server fetched `.well-known/smart-configuration` from the FHIR server."
-- "That's where it learned the **authorization endpoint** and **token endpoint**. Neither is hardcoded — point this at a different FHIR server and it adapts."
-- "`code_challenge_methods_supported` includes **S256**, so PKCE is supported."
-- *(optional)* "Notice `scopes_supported` doesn't list `patient/Patient.read`, yet we'll ask for it and get it. That list isn't guaranteed to be complete."
+**Show:** the canvas shows an amber ghost arrow, *GET .well-known/smart-configuration — NOT SENT*. The inspector shows **BEFORE SEND** with the exact request.
 
-### 2:00 — Connect, log in, consent
+**Say:** "The backend has built its first request and is waiting for me. Nothing has gone out yet."
 
-**Click:** **Connect**.
+**Click:** **Send request ▶** (or press **→**). The real response lands. Point at *authorization_endpoint* and *token_endpoint* in the response: "Discovered, not hardcoded."
 
-**Say (as the browser leaves):** "Our server has just done three things: generated a random `state`, generated a PKCE `code_verifier` and hashed it, and stored both **in its own session**. Then it redirected the browser to the authorization endpoint it discovered."
+**Click → four more times**, pausing on each:
+- **Generate OAuth state**: "32 random bytes. It will come back with the code and must match." *(click the word `state` for its explanation)*
+- **Generate PKCE verifier**: "The secret. You only ever see its length and a fingerprint, never its value."
+- **Generate PKCE challenge**: "Its SHA-256 hash. Only the hash will travel through the browser." *(PKCE tab)*
+- **Store state and verifier in session**: "Both stay on the server. The browser gets an httpOnly cookie with a session ID."
 
-**Click:** on the sandbox login page, choose a patient with labs — **Abdul Koepp** worked well in testing — enter any password, log in, then click **Approve** on the consent page.
+**Click → Build authorization URL**, then open the **Request builder** tab: walk the fields (`response_type`, `client_id`, `redirect_uri`, `scope`, `state`, `aud`, `code_challenge`, `code_challenge_method`). "All public: this whole URL is about to appear in the address bar."
 
-**Say:** "This login and consent happen at the authorization server — stepper steps 3 and 4. Our app never sees the password. That's the whole point of OAuth."
+**Click →** on *302 → authorization endpoint*. The popup moves to the sandbox login page.
 
-### 3:00 — The authorization request
+### 3:00 — Login and consent
 
-**Show:** back in the app, status **Connected**. In the wire log, the *Authorization request* entry — a **dashed** arrow from Browser to Authorization server. Expand it.
+**Show:** *Right now*: *The user is logging in and consenting … This app does not receive the password.* On the canvas, the shaded **Login + consent** block on the authorization server.
 
-**Say:**
-- "This is what our server sent the browser off with. It all travelled in the address bar, so **nothing here is secret**."
-- "`state` — random, and we'll check it comes back unchanged. That's CSRF protection."
-- "`code_challenge` — a SHA-256 hash. The actual secret, the verifier, never left our server."
-- "`aud` — which FHIR server this token is for."
-- "`scope` — what we're asking for. Only what the app needs."
+**Click (in the popup):** choose a patient with labs (**Abdul Koepp** worked well in testing), any password, log in, **Approve**.
 
-### 4:00 — The callback
+**Say:** "This happens at the authorization server. Our app will only know it happened when a code comes back."
 
-**Show:** the next entries: *Redirect back with authorization code* (dashed, back to Node), then *State validation* → **STATE MATCHES**.
+### 4:00 — The callback and state
 
-**Say:**
-- "The code came back through the browser, so the log shows only its first 8 characters."
-- "**Before** doing anything with that code, the server checked `state`. Matches. If it hadn't, it would stop right here — I'll show you that in a minute."
+**Show:** the dashed callback arrow (`/callback?code=…&state=…`), then the backend pauses: *Paused before: Compare the returned state with the stored state*. Open **State / CSRF**.
+
+**Click →.** The verdict reads **MATCH**: the same fingerprint for stored and returned.
+
+**Say:** "Checked *before* the code is used. If it didn't match, the flow would stop right here, and I'll show you that."
 
 ### 5:00 — The back-channel token exchange
 
-**Show:** *Token exchange*, a **solid** arrow from Node to the Authorization server. Expand it. Then *Token received*.
+**Show:** **BEFORE SEND**: `POST /auth/token`, with a table explaining `grant_type`, `code` (first 8 characters), `redirect_uri`, `client_id`, `code_verifier` (`[REDACTED — 64 chars]`).
 
-**Say:**
-- "Now it's server to server. The browser never sees this request or its response."
-- "We send the code **and the code_verifier**. The authorization server hashes the verifier and checks it against the challenge from earlier. That's PKCE."
-- "Look at the response: `access_token`, `refresh_token`, `id_token` — all `REDACTED`, with just their length. There's no button to reveal them. Not even for a demo."
-- "*Token received* says it plainly: tokens live in the server-side session. The browser has a cookie and nothing else."
-- Point at the stepper: "Steps 6 and 7, the back channel, are done."
+**Say:** "Server to server. The code *and* the verifier. The authorization server hashes the verifier and compares it with the challenge it saw earlier."
 
-### 6:00 — Scopes and the ID token
+**Click:** **Run to the end** (the debugger switches back to *Run automatically* and finishes).
 
-**Show:** the **Authorization** facts (expiry countdown, refresh token available, patient context), then **Requested vs granted scope**, then the **ID token** box.
+**Show:** the response: `access_token`, `refresh_token`, `id_token` all `[REDACTED — n chars]`. The state machine reaches `TOKENS_STORED → PATIENT_CONTEXT_RESOLVED`. The popup closes itself.
 
-**Say:**
-- "Requested and granted are two different things — the server can give you less. Here they match, and if anything had been dropped it would be struck through as **NOT GRANTED**."
-- "The ID token is OpenID Connect: who signed in. `fhirUser` is shown large."
-- "Two markers: **payload decoded**, **signature not verified**. Decoding a JWT proves nothing — anyone can make one. A real app must verify the signature. This demo doesn't, and it makes no decisions from those claims."
+**Click:** **Tokens** tab, then **Browser view** tab.
 
-### 7:00 — Fetch the data
+**Say:** "Metadata only: there's no button to reveal a token, because the page never received one. And here's this browser's real storage: one cookie JavaScript can't read, and one localStorage key, the theme."
 
-**Click:** **Load patient and labs**.
+### 7:00 — Use the token
 
-**Show:** the patient banner and lab table. Wire log: *Request patient* from the browser, then *FHIR API call: Patient* (solid, Node → FHIR) with `Authorization: [REDACTED]`, then the same for labs. Stepper steps 8 and 9 turn ✓.
+**Click:** **App** tab → **Load patient and labs**.
 
-**Say:**
-- "The browser asked our server for 'the patient'. It sent no token and **no patient ID**."
-- "The server knows which patient from the **token response** — the authorization server told it. The browser can't choose a different patient."
-- "Any value the app can't read cleanly shows as **Missing**. It never guesses a clinical value."
+**Show:** `GET /api/patient` from the React UI to Node (cookie only), then `GET /fhir/Patient/…` from Node to the FHIR server with `Authorization: [REDACTED]`, then the Observations call.
 
-### 8:00 — Break it: tamper with state
+**Click:** **Patient context** tab → **Send GET /api/patient?patient=123**.
 
-**Click:** **Tamper with state** (in **BREAK SOMETHING**), log in and approve again on the sandbox.
+**Say:** "The browser asked for patient 123. Look at the FHIR request: it still went to the authorized patient. The patient comes from the token, never from the browser."
 
-**Show:** the demo result, *STATE MISMATCH. Token exchange skipped*. In the wire log: the authorization request, *DEMO: stored state replaced* (the value sent vs the value now stored), the callback, *State validation* in red — and **no Token exchange entry after it**.
+### 8:00 — Break it: state
 
-**Say:**
-- "The server swapped the state it had stored. The browser came back with the original."
-- "Mismatch — so the server **refused to use the code at all**. Look, there's no token request in the log."
-- "This is what stops an attacker injecting their own authorization code into your session."
+**Click:** **Failure lab** (**F**) → **2. Invalid state** → **Run this scenario**. Log in and approve in the popup.
 
-### 9:00 — Break it: replay the code
+**Show:** the eight-part result: *STATE MISMATCH*, **where the flow stopped: step 12, Validate state**, **no** token request on the canvas, and the state machine ending `STATE_VALIDATION_FAILED → TOKEN_EXCHANGE_NOT_ATTEMPTED`.
 
-**Click:** **Replay authorization code**, log in and approve.
+**Say:** "This is what stops an attacker pushing their own code into your session."
 
-**Show:** *Token exchange* (200), then *Replay: same authorization code again* — also **200**. The demo result says the sandbox **accepted** it.
+### 9:00 — Break it: PKCE, live, at a breakpoint
 
-**Say:** *(be candid — this is the interesting part)*
-- "The spec says an authorization code must work **once**. A real server answers `invalid_grant` the second time."
-- "**This sandbox accepted it.** Its codes are stateless JWTs and it doesn't remember using them. We're showing you the real response, not a faked error."
-- "Our app's own defence still holds: we deleted our state and verifier after the first exchange, so replaying the callback URL against *us* is rejected before any request is made."
+**Click:** **PKCE** tab → **Step through and alter the verifier at the token breakpoint**. This turns on failure injection and *Pause at every message*, then starts a flow. Send each held message; log in and approve. At *POST token endpoint*, click **Alter code_verifier**.
 
-### 10:00 — Break it: force token expiry
+**Show:** *INJECTED: Alter code_verifier* (the fingerprint changes), Node's own check (*SHA-256(verifier) does NOT equal the challenge*), and the token endpoint's **real** rejection in the PKCE tab.
 
-**Click:** **Force token expiry**. No login needed.
+**Say:** "Same code, one character of the verifier changed. The code can't be redeemed. That's what makes a stolen code worthless."
 
-**Show:** the result: `FHIR request → HTTP 401 → Refresh token → new access token → FHIR retry → HTTP 200`. In the wire log: a red FHIR call (401), *Token refresh* (200), and the FHIR retry (200).
+### 10:00 — Break it: token lifecycle
 
-**Say:**
-- "The server replaced its stored access token with garbage, so the FHIR server really rejects it: 401."
-- "The one FHIR wrapper tries **one** refresh, then retries **once**. The user never logged in again."
-- "No loops. If the refresh had failed, the tokens would be cleared and the user asked to reconnect."
+**Click:** connect normally if you are not connected (scenario 1, *Run automatically*), then **Tokens** → **Force token expiry**.
+
+**Show:** the chain lights up in order: *access token expires → FHIR 401 → refresh token used → new access token → retried*. Click **Compare original and refreshed requests** to show the 401 and the 200 side by side in **Traffic**.
+
+**Then:** **Simulate refresh failure**: the refresh is refused, the tokens are discarded, and the user must reconnect.
 
 ### Wrap-up (30 seconds)
 
-**Say:** "Discovery, not hardcoding. State first. PKCE so a stolen code is useless. Tokens on the server only. Request only what you need. And a clear, bounded lifecycle. That's SMART on FHIR."
+**Say:** "Discovery, not hardcoding. State first. PKCE so a stolen code is useless. Tokens on the server only. Request only what you need. A bounded token lifecycle. And every one of those, you just watched happen, and watched fail."
 
-### Extensions (about 6 minutes)
+### Extensions
 
-Run in any order — see [§10](#10-running-each-failure-demo) for details:
-
-1. **Remove PKCE verifier** — the most direct PKCE proof.
-2. **Mismatched redirect URI** — the trailing-slash lesson.
-3. **Request `patient/*.read`** — least privilege, narrow vs broad side by side.
-4. **Prove there are no tokens in the browser** — [§11.1](#111-prove-the-browser-holds-no-tokens).
-5. **Log out** — tokens discarded but not revoked, and why that matters.
+1. **Request builder**: tick *Remove state* or *Change aud* and **Generate**. See where the real server accepts or refuses it.
+2. **Replay authorization code** (scenario 5): be candid that this sandbox *accepts* the replay.
+3. **Excessive scope** (scenario 6): narrow vs broad grants side by side (run scenario 1 first).
+4. **Redirect URI mismatch** (scenario 4): the trailing-slash lesson.
+5. **Browser token exposure** (scenario 10): the SPA vs BFF illustration.
+6. **Log out**: tokens discarded, not revoked.
 
 ---
 
-## 10. Running each failure demo
+## 10. The failure lab: ten scenarios
 
-### How demos behave
+### How scenarios behave
 
-- **Five demos run a real login.** Clicking them sends the browser to the sandbox again; you **log in and approve each time** (about 20 seconds). Only **Force token expiry** runs instantly.
-- **Force token expiry is disabled until you are connected.** Its hint reads *Connect first: this needs stored tokens.*
-- **A demo doesn't break your existing session.** If you were connected, you stay connected. The stepper shows where the demo's flow stopped.
-- **Each result has four parts:** *What we changed → Actual request and response → Why it failed* (or *What happened*) → *OAuth concept illustrated*. The middle part lists the actual wire-log entries for that run.
-- **Nothing is simulated.** The explanation is chosen from what the sandbox actually returned. If a run ends somewhere unexpected, the panel reports the facts without interpreting them.
-- While the browser is away, the panel says it is waiting. If a stricter server shows an error page instead of redirecting back, **use the browser's Back button**.
+- **Scenarios 2–6 run a real login.** They open the popup (or redirect the page) to the sandbox; **log in and approve each time** (about 20 seconds). Scenarios 7–9 run instantly but **need a connection** (the button says so).
+- **Nothing is simulated.** Each scenario makes exactly one deliberate change and runs the same code as the normal flow. The result is read from the real responses. If a run ends somewhere unexpected, the lab reports the facts without interpreting them.
+- **Every result has eight parts:** what was changed, original expected behaviour, the modified request, the actual request sent, the server response, where the flow stopped, why it matters, and the security concept and mitigation.
+- **They combine with the debugger.** Choose *Step through every stage* first to pause before each stage of any scenario.
+- **⟲ Reset scenario** (or **Reset** in the toolbar) forgets the last result and clears the log. Your connection stays unless you press **Reset all**.
 
-### The six demos: what to expect on this sandbox
+| # | Scenario | Login? | What changes | Result on `launch.smarthealthit.org` |
+|---|---|---|---|---|
+| 1 | Successful Authorization Code + PKCE | yes | nothing | tokens stored, patient context resolved |
+| 2 | Invalid state | yes | the server replaces its stored state after the browser leaves | `STATE MISMATCH`: stops at step 12; **no** token request |
+| 3 | Missing PKCE verifier | yes | token request without `code_verifier` | `HTTP 400 invalid_request "Missing code_verifier parameter"`: stops at step 13 |
+| 4 | Redirect URI mismatch | yes | `redirect_uri` with a trailing slash at `/authorize` | `/authorize` accepts it; the token endpoint rejects: `HTTP 401 invalid_request "Invalid redirect_uri parameter"` |
+| 5 | Authorization code replay | yes | the same code is sent twice | first 200; **the replay is also 200** (this sandbox's codes are stateless); replay tokens discarded |
+| 6 | Excessive scope | yes | `patient/*.read` instead of the two resource scopes | granted exactly as requested; tokens discarded; narrow vs broad compared |
+| 7 | Expired access token | no (connected) | the stored access token is made invalid | `401 → refresh → retry 200` |
+| 8 | Refresh token failure | no (connected) | the access token is invalidated **and** the refresh token corrupted | the refresh is refused and the tokens discarded: re-authentication required (expected `invalid_grant`; see note) |
+| 9 | Browser supplies a patient ID | no (connected) | `GET /api/patient?patient=123` | the request succeeds **for the authorized patient only**: the ID is ignored |
+| 10 | Direct browser token exposure | — | illustration only, never executed | SPA-holds-tokens vs this app's BFF, side by side |
 
-| Button | Needs login? | Expected result on `launch.smarthealthit.org` | Wire-log entries to point at |
-|---|---|---|---|
-| **Mismatched redirect URI** | yes | `/authorize` **accepts** `…/callback/`; `/token` rejects: `HTTP 401 invalid_request "Invalid redirect_uri parameter"` | *Authorization request* (see `redirect_uri` with trailing `/`), red *Token exchange* |
-| **Tamper with state** | yes | `STATE MISMATCH. Token exchange skipped` | *DEMO: stored state replaced* (old vs new), red *State validation*, **no** token exchange |
-| **Replay authorization code** | yes | First exchange 200; **replay also 200** (sandbox limitation); replay tokens discarded | *Token exchange*, *Replay: same authorization code again*, *DEMO: replayed tokens discarded* |
-| **Remove PKCE verifier** | yes | `HTTP 400 invalid_request "Missing code_verifier parameter"` | *DEMO: code_verifier removed*, red *Token exchange* — expand it and show there is no `code_verifier` |
-| **Request patient/\*.read** | yes | Granted **exactly as requested**; tokens discarded; narrow and broad grants shown side by side | *Authorization request* (see `scope`), *DEMO: broad-scope tokens discarded* |
-| **Force token expiry** | no (must be connected) | `401 → refresh → retry 200` | *DEMO: access token invalidated*, red FHIR call, *Token refresh*, FHIR retry |
+*Rows 2–7 match earlier live runs against this sandbox. Row 8's exact error text was not captured in testing; the lab shows whatever the sandbox actually returns.*
 
-### Talking points per demo
+### Breakpoint injections (failure injection)
 
-**Mismatched redirect URI**
-- "One trailing slash. That's all we changed."
-- "Authorization servers must compare redirect URIs **exactly**. This sandbox is lenient at the first step — it matched by prefix — but its token endpoint caught it, because the URI must be identical in both requests."
-- "A strict server like a production EHR would reject it immediately and show an error page."
-- Tip: run a normal **Connect** first, so this doesn't look like the app is broken.
+Turn on **View options → Failure injection at breakpoints**, choose *Step through every stage* or *Pause at every message*, and the **Before send** panel offers the changes that make sense at that point. Each goes into the **real** request.
 
-**Remove PKCE verifier**
-- "Correct code, correct client ID, correct redirect URI. Only the verifier is missing — and it's refused."
-- "The authorization request only ever carried the **hash**. Someone who steals the code from a URL doesn't have the verifier, so the code is useless to them."
-- Honest caveat if asked: PKCE doesn't help if the attacker can read the verifier (e.g. has compromised the server), and doesn't stop a malicious app running its own flow.
+| Where it pauses | Injection | What really happens next |
+|---|---|---|
+| Before state validation (step mode only; an internal step) | **Tamper with the returned state** | fingerprints differ → `MISMATCH` → the token exchange is never attempted *(verified in testing)* |
+| Before the token request | **Remove code_verifier** | token endpoint refuses (PKCE) |
+| Before the token request | **Alter code_verifier** | Node's own check shows the hash no longer matches; the token endpoint refuses |
+| Before the token request | **Change redirect_uri** | token endpoint refuses the mismatch |
+| Before a FHIR request | **Send an invalid access token** | real `401 → refresh → retry` |
+| Before a refresh request | **Corrupt the refresh token** / **Disable refresh** | refresh refused / no refresh possible → re-authentication required |
 
-**Request patient/\*.read**
-- For the best comparison, **run a normal Connect first**, so a *narrow* grant is recorded to compare against.
-- "We asked for every resource type for this patient. The sandbox just granted it — its consent screen has no per-scope choices."
-- "In a real EHR the grant is limited by the app's registration and the user's role. Either way: this app needs Patient and Observation, so asking for everything violates least privilege. We threw those tokens away."
+### Talking points
+
+**Invalid state.** "The state that came back doesn't match the one this session stored, so the server refuses to use the code at all. Look: there's no token request on the canvas." Without this check, an attacker can inject their own authorization code into a victim's session (login CSRF).
+
+**Missing PKCE verifier.** "Correct code, correct client ID, correct redirect URI. Only the verifier is missing, and the code is refused." Caveat if asked: PKCE doesn't help if the attacker can read the verifier (for example by compromising this server), and it doesn't stop a malicious app running its own complete flow.
+
+**Redirect URI mismatch.** "One trailing slash. Authorization servers must compare redirect URIs exactly. This sandbox is lenient at `/authorize` (it matched by prefix), but its token endpoint caught it." A strict production server rejects it immediately and shows an error page, which appears in the popup and is the result. Tip: run scenario 1 first, so this doesn't look like the app is broken.
+
+**Code replay.** "The spec says a code works once. This sandbox accepted it twice, and we show you the real response, not a faked error. Our app's own defence still holds: our state and verifier were already consumed."
+
+**Excessive scope.** Run scenario 1 first so a narrow grant is recorded. "We asked for every resource type and the sandbox granted it. A real EHR narrows by registration and role. Either way, this app needs two resource types, so asking for all of them violates least privilege. We threw those tokens away."
+
+**Expired token / refresh failure.** "One refresh, one retry, no loops. If the long-lived credential itself is refused, the only safe recovery is to send the user through authorization again."
 
 ---
 
@@ -432,7 +441,7 @@ Run in any order — see [§10](#10-running-each-failure-demo) for details:
 
 ### 11.1 Prove the browser holds no tokens
 
-While connected, open DevTools (`Cmd+Option+I` / `F12`):
+The **Browser view** tab does this live from the page's own JavaScript. To prove it independently, while connected open DevTools (`Cmd+Option+I` / `F12`):
 
 1. **Application → Cookies → `http://localhost:5173`**: one cookie, `smart_demo_sid`, with **HttpOnly ✓** and **SameSite Lax**. Its value is a signed session ID, not a token.
 2. **Console**:
@@ -441,37 +450,21 @@ While connected, open DevTools (`Cmd+Option+I` / `F12`):
    sessionStorage.length        // 0
    Object.entries(localStorage) // [["smart-demo-theme","dark"]]  — the whole of it
    ```
-3. **Network**: click `session` (the request the UI makes every 2 seconds) → **Response**. Show `hasRefreshToken: true`, `secondsRemaining`, `patientId` — flags and metadata, **no token values**.
+3. **Network**: click `events` (the live event stream) or `session` → **Response**. There are flags and metadata only, and every credential appears as `[REDACTED — n chars]`.
 
-**Say:** "There is exactly one thing in this browser's storage, and here it is: which theme I picked. No access token, no refresh token, no ID token, no patient ID. If an attacker got JavaScript running on this page, that is the entire haul."
-
-This is a stronger demonstration than an empty store, because the audience watches you *enumerate* it rather than take an empty count on trust. If you prefer the empty version, clear the key first with `localStorage.clear()` and leave the theme on whatever the operating system prefers.
-
-*(Verified in a real Chrome run: empty `document.cookie`, `sessionStorage.length === 0`, one non-secret `localStorage` key, and no JWT-shaped strings anywhere in the page.)*
+**Say:** "There is exactly one thing in this browser's storage, and here it is: which theme I picked. If an attacker got JavaScript running on this page, that is the entire haul."
 
 ### 11.2 Try to request a different patient
 
-While connected, open a new tab to:
-
-```
-http://localhost:5173/api/patient?patient=123
-```
-
-**Show:** the response is still the **authorized** patient. The wire log's *Request patient* entry says: *Ignored browser-supplied ?patient=123. The patient comes from the token context.*
-
-**Say:** "The client can't pick the patient. Authorization context comes from the token, never from the request. This is how you avoid a whole class of 'change the ID in the URL' bugs."
+Use **Patient context → Send GET /api/patient?patient=123** (or scenario 9). You can also open a new tab at `http://localhost:5173/api/patient?patient=123`. The response is still the **authorized** patient, and the event reads *Ignored browser-supplied ?patient=123*.
 
 ### 11.3 Log out
 
-**Click:** **Log out** (top right).
-
-**Show:** the *Logout* wire-log entry: *Tokens are discarded, not revoked: this demo does not call a revocation endpoint.*
-
-**Say:** "The session is gone, but those tokens are technically still valid at the authorization server until they expire. A production app should revoke them."
+**Click:** **Log out** (top right). The *Logout* event says the tokens are **discarded, not revoked**. "They're still valid at the authorization server until they expire. A production app should revoke them."
 
 ### 11.4 Show the redaction in the terminal
 
-Point at (or briefly share) the terminal running `npm run dev`. Every wire-log entry is printed there, and the tokens are `[REDACTED — n chars]` in the server log too. **One redaction helper** handles the server console, the API and the React UI.
+Every event is also printed in the terminal running `npm run dev`, and the tokens are `[REDACTED — n chars]` there too. **One redaction helper** covers the server console, the event stream, the API and the React UI.
 
 ---
 
@@ -479,12 +472,13 @@ Point at (or briefly share) the terminal running `npm run dev`. Every wire-log e
 
 | Goal | Do this |
 |---|---|
-| Clean screen, same server | **Log out**, then **Clear log** |
+| Clean screen, keep the connection | **⟲ Reset** (releases any pause, forgets the last result, clears the log) |
+| Clean screen and log out | **Reset all** |
 | Start completely fresh (sessions, log, discovery cache) | `Ctrl+C` then `npm run dev`, then reload the browser |
 | Re-fetch discovery only | **Fetch again** in the SMART discovery panel |
-| Clear a leftover error box | **Log out**, then **Connect** — a new flow or a successful login clears the last error |
+| Clear a leftover error box | **⟲ Reset**, or run scenario 1: a new flow or a successful login clears the last error |
 
-The wire log is shared by every browser tab on the machine. If you rehearsed in another tab, **Clear log** before you start.
+The event log and the debugger are shared by every browser tab on the machine (single presenter). If you rehearsed in another tab, press **⟲ Reset** before you start.
 
 ---
 
@@ -499,7 +493,10 @@ The wire log is shared by every browser tab on the machine. If you rehearsed in 
 | **STATE EXPIRED** | More than 10 minutes on the sandbox login page | Click **Connect** again. *(A nice unplanned demo of state expiry!)* |
 | Sandbox page won't load / discovery fails | Network | Switch to the hotspot; **Fetch again** |
 | Demo panel stuck on *waiting* | You haven't finished login/approve, or the sandbox showed an error page | Finish the login, or use **Back** |
-| *Re-authentication required* | The refresh failed | Click **Connect**. Explain: one refresh, one retry, then stop — this is the designed behaviour |
+| *Re-authentication required* | The refresh failed | Run scenario 1 again. Explain: one refresh, one retry, then stop — this is the designed behaviour |
+| The popup (or the app) spins and nothing happens | The debugger is holding the request: the mode is *Step* or *Pause at every message* | Look for the amber **BEFORE SEND** in the inspector: press **→** (Next step) or **Run to the end**. A pause left for 10 minutes ends the flow by itself |
+| **STATE EXPIRED** or an `invalid_grant` after a long pause | You stepped slowly: the pending authorization lasts 10 minutes, and the sandbox's codes about 5 | Run the scenario again, and step a little faster between the callback and the token request |
+| Nothing opens when you press Run | The browser blocked the popup | Allow popups for localhost, or untick *View options → Login in a popup window* (the page then redirects instead) |
 
 If the network is completely gone, the terminal output and the concepts in [OAUTH-GUIDE.md](OAUTH-GUIDE.md) are your fallback. There is no offline mode and no recorded replay.
 
@@ -530,17 +527,23 @@ The token response had no `patient`. Make sure `launch/patient` is still in `SCO
 **The lab table is empty**
 The patient you picked may have no laboratory observations. Log in again and pick another (Abdul Koepp returned 34 lab rows in testing).
 
-**Force token expiry is greyed out**
-You're not connected. Click **Connect** first.
+**Force token expiry (or scenarios 7–9) is greyed out**
+You're not connected. Run scenario 1 first.
 
-**The panes are stacked, or the left step rail has disappeared**
-The window is narrower than 1280 px. The flow band at the top still shows where the flow is. Zoom out (`Cmd −`) or widen the window to bring the rail and the three columns back.
+**The canvas shows only some steps**
+**Essentials** is on: routine steps inside Node are hidden (the note under the canvas says how many). Press **E** or choose **Everything**.
+
+**The canvas stopped following new messages**
+You scrolled up. Press **↓ Jump to latest**, or scroll to the bottom.
+
+**Everything is stacked in one column**
+The window is shorter than 760 px or narrower than 1100 px. Zoom out (`Cmd −`) or enlarge the window.
 
 **Fonts look plain**
 The fonts load from Google Fonts. Offline or blocked, the app falls back to system fonts; everything still works.
 
 **Refresh token shows "Not issued"**
-`offline_access` was removed from `SCOPES`, or the server didn't grant it. **Force token expiry** will then end in *Re-authentication required* — which is correct behaviour.
+`offline_access` was removed from `SCOPES`, or the server didn't grant it. **Force token expiry** will then end in *Re-authentication required*, which is correct behaviour. (Scenario *Disable refresh* shows the same thing on purpose.)
 
 ---
 

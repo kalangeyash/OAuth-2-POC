@@ -16,10 +16,11 @@
 A runnable, projector-friendly demonstration of the SMART App Launch flow: OAuth 2.0 Authorization Code with PKCE (S256), run against a public FHIR sandbox.
 
 - The **Node/Express server is the OAuth client.** It discovers the SMART endpoints, builds the authorization request, validates `state`, exchanges the code, keeps the tokens and calls the FHIR server.
-- The **React UI never receives a token.** It shows the flow from safe metadata and a redacted wire log.
-- The screen has a **flow band** across the top that says in one sentence where the flow is right now, and three panes below it: an **OAuth flow rail** of nine steps driven by real server events, an **application view** (discovery, patient, requested vs granted scope, labs, decoded ID token) and a **wire log** drawn as a live sequence diagram across four columns: Browser, Node client, Authorization server, FHIR server.
+- The **React UI never receives a token.** It shows the flow from safe metadata and redacted events.
+- The UI is an **OAuth Protocol Lab**: a debugger for the flow, not a dashboard. Every step the Node server takes is recorded as a structured, redacted event and streamed live to the page (Server-Sent Events). From that one stream the lab draws a **live protocol canvas** (a sequence diagram across five lifelines: Browser, React UI, Node BFF, Authorization server, FHIR server), a **message inspector** (request, response, why it exists, security, the real source file), a DevTools-style **traffic monitor**, a **21-step timeline**, a **protocol state machine** that shows exactly where a flow stopped, and panels for the **authorization request**, **PKCE**, **state/CSRF**, **what the browser can see**, **tokens** and **patient context**.
+- A **protocol debugger** can hold the real flow before each stage (`Step through every stage` / `Pause at every message`): the server shows the exact request it is about to send and waits for **Next step**. At a breakpoint the presenter can inject one controlled change (tamper with the returned state, alter the PKCE verifier, corrupt the refresh token…) and watch the real server's real response.
 - Light and dark themes, both projector-legible. The toggle is in the header.
-- A **BREAK SOMETHING** panel runs six real failures on the server and shows the provider's actual response.
+- A **Failure lab** runs ten scenarios (nine real, one labelled illustration) and explains each from the real events: what changed, the request actually sent, the response, and where the flow stopped.
 
 The OAuth implementation is deliberately hand-written and flat, so it can be explained line by line. There is no OAuth library.
 
@@ -30,7 +31,7 @@ This demo is **not production-ready**. Among other things, it:
 - keeps sessions in memory
 - runs over plain HTTP on localhost
 - decodes the ID token **without verifying its signature**
-- keeps one global wire log that any browser on the machine can read (it is redacted, but it still shows `state` values and synthetic patient IDs)
+- keeps one global event log (and one debugger) that any browser on the machine can read or drive (it is redacted, but it still shows `state` values, previews and synthetic patient IDs)
 - trusts any `https` `iss` for an EHR launch
 
 Read [Production differences](#h-production-differences) before copying any of it.
@@ -86,28 +87,28 @@ In development the browser talks to Vite, which forwards `/auth`, `/api`, `/demo
 | [server/src/routes/auth.ts](server/src/routes/auth.ts) | `/auth/login`, `/launch`, `/callback` (state checked first), `/auth/logout` |
 | [server/src/session.ts](server/src/session.ts) | Session cookie settings, state validation, one-time consumption |
 | [server/src/fhir.ts](server/src/fhir.ts) | The one FHIR wrapper: 401 → one refresh → one retry |
-| [server/src/redaction.ts](server/src/redaction.ts) | The one redaction helper, shared by server logs, the wire log API and the React wire log |
+| [server/src/redaction.ts](server/src/redaction.ts) | The one redaction helper, shared by server logs, the event stream and the React UI |
+| [server/src/wireLog.ts](server/src/wireLog.ts) | `record()`: the one place events are created. Redacts, stores and publishes each event |
+| [server/src/eventStream.ts](server/src/eventStream.ts) | `GET /api/events`: the live Server-Sent Events stream |
+| [server/src/timeline.ts](server/src/timeline.ts) | Shared by server and UI: the event shape, the 21 steps (with their real source files), debugger modes and injections |
+| [server/src/safeView.ts](server/src/safeView.ts) | Previews and fingerprints, so the UI can show two values match without showing either |
+| [server/src/lab.ts](server/src/lab.ts) | The protocol debugger: breakpoints that hold the real request, and failure injection |
+| [client/src/model.ts](client/src/model.ts) | The one reducer that turns events into the timeline, state machine and every panel |
 | [server/src/routes/demo.ts](server/src/routes/demo.ts) | The six failure demonstrations |
-| [client/src/flow.ts](client/src/flow.ts) | The nine step labels, and the one function that turns flow state into a sentence |
+| [client/src/flow.ts](client/src/flow.ts) | "What is happening right now?": the latest event, breakpoint or replay in one sentence |
 | [client/src/styles.css](client/src/styles.css) | The design tokens and both themes |
 
 ## F. Ten-minute presenter script
 
-**Before you start:** run `npm run dev`, open http://localhost:5173 full screen, and click **Clear log**.
+The full, click-by-click script is in [RUN-AND-DEMO.md §9](RUN-AND-DEMO.md#9-the-presentation-script). In short:
 
-1. **0:00 · Explain the architecture.** Point at the yellow synthetic-data banner, the flow band and the three panes. In the wire log, the four columns are the four actors. Dashed arrows are browser redirects (front channel). Solid arrows are direct HTTP calls, including Node talking to the authorization and FHIR servers (back channel).
-2. **1:00 · Show discovery.** In *SMART discovery*, the client learned `authorization_endpoint`, `token_endpoint`, `code_challenge_methods_supported: S256` and `capabilities` from `.well-known/smart-configuration`. Nothing is hardcoded. Note that `scopes_supported` does not list `patient/Patient.read`; the list does not have to be complete.
-3. **2:00 · Click Connect.** The wire log shows *Connect* and then *Authorization request* (a dashed arrow to the authorization server). Stepper steps 1 and 2 turn done.
-4. **3:00 · Explain the authorization request.** Expand the entry and walk through `state` (CSRF protection), `code_challenge` (PKCE: only the hash is sent), `aud`, `scope` and `redirect_uri`. Everything in it is visible to the browser, so none of it is secret. On the sandbox's login page, choose a patient with labs (for example *Abdul Koepp*), type any password, then click **Approve** on the consent page.
-5. **4:00 · Explain the callback and the code.** The code arrives through the browser, so the log shows only its first 8 characters. The next entry is *State validation: STATE MATCHES*, which runs **before** any token request.
-6. **5:00 · Explain the back-channel token exchange.** *Token exchange* is a solid arrow from Node to the authorization server. `code_verifier` and every token are shown only as `[REDACTED — n chars]`. *Token received* says the tokens live in the server-side session; the browser holds only a cookie.
-7. **6:00 · Show the granted scopes and the ID token.** In *Requested vs granted scope*, requested is not necessarily granted; here they match. In the ID token view, `fhirUser` is shown, the payload is **decoded**, and the signature is **not verified**.
-8. **7:00 · Fetch the patient and labs.** Click **Load patient and labs**. Node calls the FHIR server with the bearer token (redacted in the log). The patient ID comes from the token response, not from the browser. Steps 8 and 9 turn done.
-9. **8:00 · Demonstrate a state failure.** Click **Tamper with state** and log in again. The result is *STATE MISMATCH, token exchange skipped*, with no call to the token endpoint in the log.
-10. **9:00 · Demonstrate code replay.** Click **Replay authorization code**. Be candid: this sandbox **accepts** the replay (HTTP 200), because its codes are stateless. The panel explains what RFC 6749 requires, and that this client's own state and verifier were already consumed.
-11. **10:00 · Demonstrate token refresh.** Click **Force token expiry**. Follow *FHIR → 401*, then *Token refresh → 200*, then *FHIR retry → 200*.
-
-**If there is time:** *Mismatched redirect URI*, *Remove PKCE verifier*, *Request patient/\*.read* (compares narrow and broad grants), and *Log out*.
+1. **Reset all**, leave **Essentials** on, keep *Login in a popup window* ticked (the lab stays on screen while you log in).
+2. Choose **Step through every stage** and press **▶ Run scenario**. The backend holds each stage: inspect the **BEFORE SEND** request, then press **→**. Discovery, state, PKCE verifier and challenge, session storage, the authorization URL (**Request builder** tab), the 302.
+3. Log in and approve in the popup. The canvas shows *Login + consent — not visible to this app*.
+4. State validation (**State / CSRF** tab: **MATCH**), then the token request's **BEFORE SEND** parameter table. **Run to the end**.
+5. **Tokens** and **Browser view** tabs: token metadata only; this browser's real storage holds no token.
+6. **App → Load patient and labs**, then **Patient context → GET /api/patient?patient=123** (ignored).
+7. **Failure lab**: *Invalid state* (stops at step 12, no token request). Then **PKCE → Step through and alter the verifier** (real rejection). Then **Tokens → Force token expiry** and **Simulate refresh failure**.
 
 ## G. OAuth concept mapping
 

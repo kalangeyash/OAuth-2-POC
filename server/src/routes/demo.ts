@@ -5,7 +5,9 @@ import { config } from "../config.js";
 import { getAuthorizedPatient, ReauthRequiredError } from "../fhir.js";
 import { OAuthFlowError, startAuthorization } from "../oauth.js";
 import { redact } from "../redaction.js";
+import { describeStateTampered } from "../safeView.js";
 import { broadenPatientScopes } from "../scope.js";
+import { BUILDER_MODS, type BuilderModId } from "../timeline.js";
 import { advanceFlow, failFlow, generateState, type DemoId } from "../session.js";
 import { nextEntryId, record } from "../wireLog.js";
 
@@ -33,6 +35,8 @@ export interface DemoFacts {
 interface DemoDefinition {
   title: string;
   whatWeChanged: () => string;
+  /** What the unmodified flow does at the point this demo changes. */
+  expected: string;
   concept: string;
   explain: (facts: DemoFacts) => { outcome: string; why: string };
 }
@@ -48,6 +52,8 @@ const DEMOS: Record<DemoId, DemoDefinition> = {
     title: "Mismatched redirect URI",
     whatWeChanged: () =>
       `The authorization request sent redirect_uri=${config.redirectUri}/ (one trailing slash added). The token request still sent the registered ${config.redirectUri}.`,
+    expected:
+      "The authorization request and the token request send the identical, registered redirect_uri. The authorization server redirects back to it and the token endpoint accepts the code.",
     concept: "Redirect URI validation: authorization servers compare redirect URIs exactly.",
     explain(facts) {
       if (facts.stage === "authorization" && facts.rejected) {
@@ -76,6 +82,8 @@ const DEMOS: Record<DemoId, DemoDefinition> = {
     title: "Tamper with state",
     whatWeChanged: () =>
       "After sending the browser to /authorize, the server replaced the state stored in its session with a new random value. The browser still carried the original state.",
+    expected:
+      "The state returned with the code equals the state stored in the session (MATCH), so the backend exchanges the code for tokens.",
     concept: "state is CSRF protection, and it is validated before any token exchange.",
     explain(facts) {
       if (facts.stage === "state validation" && facts.rejected) {
@@ -94,6 +102,7 @@ const DEMOS: Record<DemoId, DemoDefinition> = {
     title: "Replay authorization code",
     whatWeChanged: () =>
       "After a successful token exchange, the server sent the same authorization code and code_verifier to the token endpoint a second time.",
+    expected: "Each authorization code is redeemed exactly once. A second attempt is refused with invalid_grant.",
     concept: "Authorization codes are single-use credentials.",
     explain(facts) {
       if (facts.stage === "token replay" && facts.rejected) {
@@ -121,6 +130,8 @@ const DEMOS: Record<DemoId, DemoDefinition> = {
     title: "Remove PKCE verifier",
     whatWeChanged: () =>
       "The token request was sent without code_verifier. The code, redirect_uri and client_id were all correct.",
+    expected:
+      "The token request carries the code_verifier. The authorization server hashes it, finds it equals the code_challenge from /authorize, and issues tokens.",
     concept: "PKCE: the token request must prove possession of the original code_verifier.",
     explain(facts) {
       if (facts.stage === "token exchange" && facts.rejected) {
@@ -145,6 +156,7 @@ const DEMOS: Record<DemoId, DemoDefinition> = {
   "broad-scope": {
     title: "Request patient/*.read",
     whatWeChanged: () => `Requested "${broadenPatientScopes(config.scopes)}" instead of "${config.scopes}".`,
+    expected: `The app requests only the resource types it needs ("${config.scopes}") and stores the tokens it is granted.`,
     concept: "Least privilege: request only what the app needs, and compare requested with granted scope.",
     explain(facts) {
       if (facts.stage === "authorization" && facts.rejected) {
@@ -173,6 +185,7 @@ const DEMOS: Record<DemoId, DemoDefinition> = {
     whatWeChanged: () =>
       "Server-side only: the stored access token was replaced with random characters of the same length and marked expired. " +
       "The sandbox issues 60-minute tokens and we cannot move its clock, so the token is made invalid to get a genuine 401 from the FHIR server.",
+    expected: "The stored access token is valid, so the FHIR server answers 200 to the first request.",
     concept: "Token lifecycle: 401, then one refresh, then one retry.",
     explain(facts) {
       const trace = (facts.trace ?? []).join(" → ");
@@ -187,6 +200,46 @@ const DEMOS: Record<DemoId, DemoDefinition> = {
       return {
         outcome: `${trace || "The FHIR request failed"}. Re-authentication required.`,
         why: "The single refresh attempt or the single retry failed, so the wrapper cleared the stored tokens instead of trying again. The user must click Connect.",
+      };
+    },
+  },
+
+  "refresh-failure": {
+    title: "Refresh token failure",
+    whatWeChanged: () =>
+      "Server-side only: the stored access token was invalidated (as in Force token expiry) AND the stored refresh token was replaced with random characters of the same length.",
+    expected: "After the 401, the refresh token is accepted, a new access token is issued, and the request is retried successfully.",
+    concept: "A rejected refresh token ends the session: the user must authorize again.",
+    explain(facts) {
+      const trace = (facts.trace ?? []).join(" → ");
+      if (facts.rejected) {
+        return {
+          outcome: `${trace}. The stored tokens were discarded: re-authentication required.`,
+          why:
+            "The FHIR server answered 401, so the wrapper tried the refresh token once. The authorization server rejected it (a refresh token that is revoked, expired or unknown is refused with invalid_grant). " +
+            "The wrapper did not loop or guess: it cleared the tokens and asks the user to Connect again. That is the only safe recovery when the long-lived credential itself is no longer accepted.",
+        };
+      }
+      return {
+        outcome: `${trace}. The corrupted refresh token was ACCEPTED.`,
+        why: "The authorization server issued a new access token for a refresh token it never issued. A compliant server must refuse it with invalid_grant.",
+      };
+    },
+  },
+
+  "refresh-disabled": {
+    title: "Refresh disabled (no refresh token)",
+    whatWeChanged: () =>
+      "Server-side only: the stored access token was invalidated AND the stored refresh token was deleted, as if offline_access had never been granted.",
+    expected: "After the 401, the refresh token renews access without the user noticing.",
+    concept: "Without a refresh token (offline_access), an expired access token means a new login.",
+    explain(facts) {
+      const trace = (facts.trace ?? []).join(" → ");
+      return {
+        outcome: `${trace || "FHIR request → HTTP 401"}. No refresh was possible: re-authentication required.`,
+        why:
+          "The FHIR server rejected the access token and there was no refresh token to renew it with, so no token request was even sent. " +
+          "Apps that do not request offline_access (or servers that do not grant it) must send the user through the authorization flow again when the access token expires.",
       };
     },
   },
@@ -213,11 +266,27 @@ demoRouter.get("/demo/tamper-state", async (req, res) => {
       // DEMO: overwrite the state stored in the session. The browser still carries the original value.
       const original = pending.state;
       pending.state = generateState();
+      const detail = describeStateTampered(original, pending.state);
       record({
         direction: "internal",
+        category: "demo",
         step: "DEMO: stored state replaced",
-        params: { state_sent_to_authorization_server: original, state_now_stored_in_session: pending.state },
+        params: {
+          state_sent_to_authorization_server: `${detail.original.preview} (fingerprint ${detail.original.fingerprint})`,
+          state_now_stored_in_session: `${detail.replacement.preview} (fingerprint ${detail.replacement.fingerprint})`,
+        },
+        detail,
+        demo: {
+          id: "tamper-state",
+          modified: {
+            field: "state (stored in session)",
+            original: detail.original.preview,
+            sent: detail.replacement.preview,
+          },
+        },
         outcome: "info",
+        explanation:
+          "DEMO: the backend overwrote the state in its own session. The browser is still carrying the original state to the authorization server.",
         notes: ["When the browser comes back, /callback compares these two values."],
       });
     },
@@ -244,32 +313,132 @@ demoRouter.get("/demo/broad-scope", async (req, res) => {
 });
 
 demoRouter.post("/demo/force-expiry", async (req, res) => {
+  await runExpiryDemo(req, "force-expiry");
+  res.json(redact({ demo: req.session.demo }));
+});
+
+/** Scenario: the access token expires AND the refresh token is rejected. */
+demoRouter.post("/demo/refresh-failure", async (req, res) => {
+  await runExpiryDemo(req, "refresh-failure");
+  res.json(redact({ demo: req.session.demo }));
+});
+
+/** Scenario: the access token expires and there is no refresh token at all. */
+demoRouter.post("/demo/refresh-disabled", async (req, res) => {
+  await runExpiryDemo(req, "refresh-disabled");
+  res.json(redact({ demo: req.session.demo }));
+});
+
+/**
+ * Authorization Request Builder: starts a real authorization with the chosen,
+ * whitelisted changes to the authorization URL. Unknown values are refused.
+ */
+demoRouter.get("/lab/authorize", async (req, res) => {
+  const requested = String(req.query.mods ?? "")
+    .split(",")
+    .map((mod) => mod.trim())
+    .filter(Boolean);
+  const unknown = requested.filter((mod) => !(mod in BUILDER_MODS));
+  if (unknown.length > 0) {
+    throw new OAuthFlowError("Authorization Request Builder", `Unknown modification: ${unknown.join(", ")}.`);
+  }
+  const mods = requested as BuilderModId[];
+  delete req.session.lastError;
+  if (req.session.demo?.status === "running") delete req.session.demo;
+  record({
+    direction: "browser-client",
+    category: "lab",
+    step: mods.length > 0 ? "Request builder: authorization with modifications" : "Request builder: unmodified authorization",
+    method: "GET",
+    endpoint: req.path,
+    params: mods.length > 0 ? { mods: mods.join(",") } : undefined,
+    paramsIn: "query",
+    runStart: true,
+    outcome: "info",
+    explanation:
+      mods.length > 0
+        ? `Experiment: a real authorization request with ${mods.map((mod) => BUILDER_MODS[mod].label).join(", ")}. Watch where the real servers accept or refuse it.`
+        : "A real, unmodified authorization request, built step by step.",
+    notes: mods.map((mod) => `${BUILDER_MODS[mod].label}: ${BUILDER_MODS[mod].expect}`),
+  });
+  await startAuthorization(req, res, { fhirBaseUrl: config.fhirBaseUrl, scope: config.scopes, mods });
+});
+
+/*
+ * Force token expiry and its two refresh-failure variants. Each changes only what
+ * is stored on the server, then makes one ordinary FHIR request: the 401, the
+ * refresh attempt and the retry are all real.
+ */
+async function runExpiryDemo(req: Request, id: "force-expiry" | "refresh-failure" | "refresh-disabled"): Promise<void> {
   const auth = req.session.auth;
-  if (!auth) throw new OAuthFlowError("Force token expiry", "Connect first: this demo needs stored tokens.");
-  beginDemo(req, "force-expiry");
+  if (!auth) throw new OAuthFlowError(DEMOS[id].title, "Connect first: this demo needs stored tokens.");
+  beginDemo(req, id);
 
   // DEMO (server-side only): make the stored access token unusable and mark it expired.
   auth.accessToken = randomBytes(auth.accessToken.length).toString("base64url").slice(0, auth.accessToken.length);
   auth.expiresAt = Date.now();
   record({
     direction: "internal",
+    category: "demo",
     step: "DEMO: access token invalidated",
+    demo: {
+      id,
+      modified: {
+        field: "access_token (stored on the server)",
+        original: "the valid token issued by the authorization server",
+        sent: "random characters of the same length, marked expired",
+      },
+    },
     outcome: "info",
+    explanation:
+      "DEMO: the backend made its own stored access token unusable, as if it had expired. The next FHIR request will carry it.",
     notes: ["The stored access token now holds random characters and is marked expired. The next FHIR request sends it as-is."],
   });
+
+  if (id === "refresh-failure" && auth.refreshToken) {
+    auth.refreshToken = randomBytes(auth.refreshToken.length).toString("base64url").slice(0, auth.refreshToken.length);
+    record({
+      direction: "internal",
+      category: "demo",
+      step: "DEMO: refresh token corrupted",
+      demo: {
+        id,
+        modified: {
+          field: "refresh_token (stored on the server)",
+          original: "the refresh token issued by the authorization server",
+          sent: "random characters of the same length",
+        },
+      },
+      outcome: "info",
+      explanation: "DEMO: the stored refresh token was replaced too. When the backend tries to refresh, it will send this.",
+    });
+  }
+  if (id === "refresh-disabled") {
+    delete auth.refreshToken;
+    record({
+      direction: "internal",
+      category: "demo",
+      step: "DEMO: refresh token removed",
+      demo: {
+        id,
+        modified: { field: "refresh_token (stored on the server)", original: "stored", sent: "(none, as if offline_access was not granted)" },
+      },
+      outcome: "info",
+      explanation: "DEMO: the stored refresh token was deleted. The backend has nothing to renew access with.",
+    });
+  }
 
   const trace: string[] = [];
   try {
     await getAuthorizedPatient(req.session, trace);
     advanceFlow(req.session, 8);
-    concludeDemo(req.session, "force-expiry", { stage: "fhir", rejected: false, trace });
+    concludeDemo(req.session, id, { stage: "fhir", rejected: false, trace });
   } catch (error) {
-    concludeDemo(req.session, "force-expiry", { stage: "fhir", rejected: true, trace });
+    concludeDemo(req.session, id, { stage: "fhir", rejected: true, trace });
     if (!(error instanceof ReauthRequiredError)) throw error;
     failFlow(req.session, 8);
   }
-  res.json(redact({ demo: req.session.demo }));
-});
+}
 
 function beginDemo(req: Request, id: DemoId): void {
   const definition = DEMOS[id];
@@ -277,6 +446,7 @@ function beginDemo(req: Request, id: DemoId): void {
     id,
     title: definition.title,
     whatWeChanged: definition.whatWeChanged(),
+    expected: definition.expected,
     concept: definition.concept,
     status: "running" as const,
     firstEntryId: nextEntryId(),
@@ -288,12 +458,20 @@ function beginDemo(req: Request, id: DemoId): void {
   };
   req.session.demo = demo;
   delete req.session.lastError;
+  // The redirect demos are browser navigations that start a whole new authorization.
+  // Force token expiry is a React fetch inside the current one.
+  const navigation = req.method === "GET";
   record({
-    direction: "browser-client",
+    direction: navigation ? "browser-client" : "react-client",
+    category: "demo",
     step: `DEMO: ${definition.title}`,
     method: req.method,
     endpoint: req.path,
+    runStart: navigation || undefined,
+    demo: { id },
     outcome: "info",
+    explanation: `Failure demo started: ${definition.title}. ${demo.whatWeChanged}`,
+    securityConcept: definition.concept,
     notes: [demo.whatWeChanged],
   });
 }

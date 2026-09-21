@@ -1,4 +1,6 @@
 import axios from "axios";
+import { safeHeaders } from "./safeView.js";
+import type { EventDetail } from "./timeline.js";
 import { record, startTimer } from "./wireLog.js";
 
 /** What this client reads from GET {fhirBaseUrl}/.well-known/smart-configuration */
@@ -30,30 +32,67 @@ export class DiscoveryError extends Error {
 // One cached document per FHIR base URL: the configured sandbox and each EHR-launch iss get their own.
 const cache = new Map<string, Discovery>();
 
-export async function discover(fhirBaseUrl: string, options: { force?: boolean } = {}): Promise<Discovery> {
+export interface DiscoverOptions {
+  force?: boolean;
+  /** Runs after the request is built and before it is sent: the protocol debugger pauses here. */
+  beforeSend?: (request: { url: string; headers: Record<string, string> }) => Promise<unknown>;
+}
+
+export async function discover(fhirBaseUrl: string, options: DiscoverOptions = {}): Promise<Discovery> {
   const cached = cache.get(fhirBaseUrl);
   if (cached && !options.force) return cached;
 
   const url = `${fhirBaseUrl}/.well-known/smart-configuration`;
-  const logged = { direction: "client-fhir", step: "SMART discovery", method: "GET", endpoint: url } as const;
+  const requestHeaders = { Accept: "application/json" };
+  await options.beforeSend?.({ url, headers: requestHeaders });
+  const logged = {
+    direction: "client-fhir",
+    category: "discovery",
+    step: "SMART discovery",
+    method: "GET",
+    endpoint: url,
+    requestHeaders,
+    why: "The client learns its authorization and token endpoints from the FHIR server itself, so nothing is hardcoded.",
+    security:
+      "Public metadata: no credential is sent or received. Trusting the wrong discovery document would send users to the wrong login page, which is why the FHIR base URL is configuration.",
+  } as const;
+  const failed = [{ step: "discovery", status: "failed" }] as const;
   const stop = startTimer();
   const response = await axios
-    .get(url, { headers: { Accept: "application/json" }, timeout: 15_000, validateStatus: () => true })
+    .get(url, { headers: requestHeaders, timeout: 15_000, validateStatus: () => true })
     .catch((error: Error) => {
-      record({ ...logged, status: "network error", durationMs: stop(), result: { message: error.message }, outcome: "error" });
+      record({
+        ...logged,
+        timeline: [...failed],
+        status: "network error",
+        durationMs: stop(),
+        result: { message: error.message },
+        outcome: "error",
+      });
       throw new DiscoveryError(`Could not reach ${url}: ${error.message}`, url);
     });
 
   if (response.status !== 200 || !isObject(response.data)) {
     const body = typeof response.data === "string" ? response.data.slice(0, 300) : response.data;
-    record({ ...logged, status: response.status, durationMs: stop(), result: body, outcome: "error" });
+    record({
+      ...logged,
+      timeline: [...failed],
+      status: response.status,
+      responseHeaders: safeHeaders(response.headers),
+      durationMs: stop(),
+      result: body,
+      outcome: "error",
+    });
     throw new DiscoveryError(`SMART discovery failed: HTTP ${response.status} from ${url}`, url, response.status);
   }
 
   const discovery = readDiscoveryDocument(fhirBaseUrl, url, response.data);
   record({
     ...logged,
+    timeline: [{ step: "discovery", status: "done" }],
+    detail: describeDiscovery(discovery, "fetched"),
     status: response.status,
+    responseHeaders: safeHeaders(response.headers),
     durationMs: stop(),
     result: {
       authorization_endpoint: discovery.authorizationEndpoint,
@@ -67,6 +106,17 @@ export async function discover(fhirBaseUrl: string, options: { force?: boolean }
   });
   cache.set(fhirBaseUrl, discovery);
   return discovery;
+}
+
+export function describeDiscovery(discovery: Discovery, source: "fetched" | "cached"): EventDetail {
+  return {
+    kind: "discovery",
+    source,
+    fetchedAt: discovery.fetchedAt,
+    authorizationEndpoint: discovery.authorizationEndpoint ?? null,
+    tokenEndpoint: discovery.tokenEndpoint ?? null,
+    codeChallengeMethods: discovery.codeChallengeMethodsSupported ?? null,
+  };
 }
 
 /** Endpoints come from the discovery document. They are never hardcoded. */

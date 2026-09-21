@@ -6,6 +6,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { config } from "./config.js";
 import { discover, DiscoveryError } from "./discovery.js";
 import { FhirRequestError, MissingPatientContextError, ReauthRequiredError } from "./fhir.js";
+import { LabStoppedError } from "./lab.js";
 import { OAuthFlowError } from "./oauth.js";
 import { redact } from "./redaction.js";
 import { apiRouter } from "./routes/api.js";
@@ -21,6 +22,7 @@ app.disable("x-powered-by");
 // CORS only matters if the UI calls this port directly.
 app.use(cors({ origin: config.clientUrl, credentials: true }));
 app.use(createSessionMiddleware(config.sessionSecret));
+app.use(express.json({ limit: "10kb" }));
 
 app.use(authRouter);
 app.use(apiRouter);
@@ -35,7 +37,14 @@ app.use((error: unknown, req: Request, res: Response, _next: NextFunction) => {
   logSafely(`[error] ${req.method} ${req.path}`, teaching);
   // Discovery, token and FHIR failures are already in the wire log. Record anything else here.
   if (error instanceof OAuthFlowError || httpStatus === 500) {
-    record({ direction: "internal", step: teaching.step, result: teaching, outcome: "error" });
+    record({
+      direction: "internal",
+      category: "error",
+      step: teaching.step,
+      result: teaching,
+      outcome: "error",
+      explanation: `The flow stopped with an error at "${teaching.step}": ${teaching.message}`,
+    });
   }
   if (req.session) req.session.lastError = teaching;
 
@@ -85,6 +94,16 @@ function toTeachingError(error: unknown): { httpStatus: number; teaching: Teachi
     return {
       httpStatus: 502,
       teaching: { step: "FHIR API call", endpoint: error.url, status: error.status, message: error.message },
+    };
+  }
+  if (error instanceof LabStoppedError) {
+    return {
+      httpStatus: 409,
+      teaching: {
+        step: error.step,
+        message: error.message,
+        concept: "Protocol debugger: the flow was stopped on purpose at a breakpoint. Nothing after it was sent.",
+      },
     };
   }
   if (error instanceof OAuthFlowError) {

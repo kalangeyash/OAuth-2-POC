@@ -2,20 +2,17 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import session from "express-session";
 import type { Discovery } from "./discovery.js";
 import type { ScopeDiff } from "./scope.js";
+import type { DemoId } from "./timeline.js";
 
-export type DemoId =
-  | "redirect-mismatch"
-  | "tamper-state"
-  | "replay-code"
-  | "no-pkce-verifier"
-  | "broad-scope"
-  | "force-expiry";
+export type { DemoId } from "./timeline.js";
 
 /** A failure demonstration and what really happened when it ran. */
 export interface DemoResult {
   id: DemoId;
   title: string;
   whatWeChanged: string;
+  /** What the unmodified flow would have done at this point. */
+  expected: string;
   concept: string;
   status: "running" | "completed";
   firstEntryId: number;
@@ -35,6 +32,8 @@ export const STATE_TTL_MS = 10 * 60 * 1000;
 export interface PendingAuthorization {
   state: string;
   codeVerifier: string;
+  /** The code_challenge sent to /authorize. Public; kept so Node can show its own PKCE check. */
+  codeChallenge?: string;
   createdAt: number;
   requestedScope: string;
   /** The redirect_uri that was sent to /authorize. */
@@ -118,6 +117,23 @@ export function failFlow(store: { flow?: StepStatus[] }, failedStep: number): vo
   });
 }
 
+/**
+ * The session cookie's attributes. Exported so /api/session can report the real
+ * configuration to the "What can the browser see?" panel instead of a hardcoded claim.
+ */
+export const SESSION_COOKIE_OPTIONS = {
+  // The cookie carries only a signed session ID. Tokens stay in the server-side session.
+  httpOnly: true,
+  // SameSite=Lax, not Strict. The return trip from the authorization server to
+  // /callback is a cross-site, top-level GET navigation. Lax still sends the
+  // session cookie on it. Strict would not, so /callback would find no stored
+  // state or code_verifier and fail with a confusing state/session error.
+  sameSite: "lax",
+  // Plain HTTP on localhost. In production: HTTPS and secure: true.
+  secure: false,
+  maxAge: 8 * 60 * 60 * 1000,
+} as const;
+
 export function createSessionMiddleware(secret: string) {
   return session({
     name: SESSION_COOKIE_NAME,
@@ -129,18 +145,7 @@ export function createSessionMiddleware(secret: string) {
     // the process restarts and it does not provide durable/shared session
     // storage across multiple application instances.
     store: new session.MemoryStore(),
-    cookie: {
-      // The cookie carries only a signed session ID. Tokens stay in the server-side session.
-      httpOnly: true,
-      // SameSite=Lax, not Strict. The return trip from the authorization server to
-      // /callback is a cross-site, top-level GET navigation. Lax still sends the
-      // session cookie on it. Strict would not, so /callback would find no stored
-      // state or code_verifier and fail with a confusing state/session error.
-      sameSite: "lax",
-      // Plain HTTP on localhost. In production: HTTPS and secure: true.
-      secure: false,
-      maxAge: 8 * 60 * 60 * 1000,
-    },
+    cookie: { ...SESSION_COOKIE_OPTIONS },
   });
 }
 
