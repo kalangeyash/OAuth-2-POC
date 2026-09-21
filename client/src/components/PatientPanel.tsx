@@ -1,25 +1,33 @@
-import type { PatientSummary, SessionInfo } from "../types";
+import { useEffect, useState } from "react";
+import { ErrorNotice } from "./ErrorNotice";
+import type { Load, PatientSummary, SessionInfo } from "../types";
 
 interface Props {
   session: SessionInfo;
-  patient: PatientSummary | null;
-  loading: boolean;
+  patient: Load<PatientSummary>;
   onLoad: () => void;
 }
 
-export function PatientPanel({ session, patient, loading, onLoad }: Props) {
+export function PatientPanel({ session, patient, onLoad }: Props) {
+  const loading = patient.state === "loading";
+  const remaining = useLocalCountdown(session.secondsRemaining);
+
   return (
-    <section className="section">
+    <section className="section" aria-busy={loading || undefined}>
       <h2>Authorization</h2>
       <dl className="facts">
         <div>
           <dt>Status</dt>
-          <dd className="fact-ok">Authorized. Tokens are held by the Node server.</dd>
+          <dd className="fact-ok">
+            Authorized
+            <span className="fact-note"> — tokens held by the Node server</span>
+          </dd>
         </div>
         <div>
           <dt>Access token expires in</dt>
-          <dd>
-            {formatSeconds(session.secondsRemaining)}
+          <dd className={expiryClass(remaining)}>
+            <span className="expiry-value">{formatSeconds(remaining)}</span>
+            {expiryGlyph(remaining)}
             {session.expiresIn !== null && <span className="fact-note"> (expires_in: {session.expiresIn} s)</span>}
           </dd>
         </div>
@@ -35,33 +43,39 @@ export function PatientPanel({ session, patient, loading, onLoad }: Props) {
         </div>
       </dl>
 
-      {patient ? (
+      {patient.state === "loading" && (
+        <div className="skeleton skeleton-banner" aria-hidden="true" />
+      )}
+
+      {patient.state === "error" && <ErrorNotice error={patient.error} onRetry={onLoad} />}
+
+      {patient.state === "ready" ? (
         <div className="patient-banner">
           <div>
-            <p className="patient-name">{patient.name ?? "Name missing"}</p>
+            <p className="patient-name">{patient.data.name ?? "Name missing"}</p>
             <dl className="patient-details">
               <div>
                 <dt>Born</dt>
-                <dd>{patient.birthDate ?? "Missing"}</dd>
+                <dd>{patient.data.birthDate ?? "Missing"}</dd>
               </div>
               <div>
                 <dt>Sex</dt>
-                <dd>{patient.gender ?? "Missing"}</dd>
+                <dd>{patient.data.gender ?? "Missing"}</dd>
               </div>
               <div>
                 <dt>FHIR id</dt>
                 <dd>
-                  <code>{patient.id}</code>
+                  <code>{patient.data.id}</code>
                 </dd>
               </div>
             </dl>
             <p className="synthetic-tag">Synthetic record</p>
           </div>
           <button type="button" className="button small" onClick={onLoad} disabled={loading}>
-            {loading ? "Calling…" : "Call FHIR API again"}
+            {loading ? "Loading…" : "Load again"}
           </button>
         </div>
-      ) : (
+      ) : patient.state === "error" ? null : (
         <div className="load-data">
           <button type="button" className="button primary big" onClick={onLoad} disabled={loading}>
             {loading ? "Calling the FHIR API…" : "Load patient and labs"}
@@ -109,6 +123,45 @@ function IdTokenView({ claims }: { claims: Record<string, unknown> }) {
       </details>
     </div>
   );
+}
+
+/*
+ * The session poll is every 2 s, so the countdown visibly stutters if it is driven
+ * by the poll alone. Tick locally each second, re-seeded whenever the server
+ * reports a fresh number — this is the clock "Force token expiry" asks the room
+ * to watch.
+ */
+function useLocalCountdown(reported: number | null): number | null {
+  const [seconds, setSeconds] = useState(reported);
+
+  useEffect(() => {
+    setSeconds(reported);
+  }, [reported]);
+
+  useEffect(() => {
+    if (reported === null) return;
+    const timer = window.setInterval(() => {
+      setSeconds((current) => (current === null || current <= 0 ? current : current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [reported]);
+
+  return seconds;
+}
+
+function expiryClass(seconds: number | null): string | undefined {
+  if (seconds === null) return undefined;
+  if (seconds <= 0) return "fact-expired";
+  if (seconds < 300) return "fact-expiring";
+  return undefined;
+}
+
+/* Never colour alone: an expiring token says so in words too. */
+function expiryGlyph(seconds: number | null) {
+  if (seconds === null) return null;
+  if (seconds <= 0) return <span className="fact-note"> — expired</span>;
+  if (seconds < 300) return <span className="fact-note"> — expiring soon</span>;
+  return null;
 }
 
 function formatSeconds(seconds: number | null): string {

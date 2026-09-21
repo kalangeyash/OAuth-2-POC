@@ -101,10 +101,25 @@ export interface WireEntry {
   endpoint?: string;
   params?: Record<string, unknown>;
   status?: number | string;
+  /* Milliseconds the Node server waited for an outbound HTTP response. Absent when
+   * there was no outbound request (internal checks, browser → Node client hops).
+   * Mirrors server/src/wireLog.ts; keep the two in step. */
+  durationMs?: number;
   result?: unknown;
   notes?: string[];
   outcome: "ok" | "error" | "info";
 }
+
+/**
+ * A fetched resource in one of its four real states. Panels take one of these so
+ * every panel can render empty, loading, success and error — previously the
+ * parent gated children on truthiness, so they could not tell the difference.
+ */
+export type Load<T> =
+  | { state: "idle" }
+  | { state: "loading" }
+  | { state: "ready"; data: T }
+  | { state: "error"; error: TeachingError };
 
 export interface PatientSummary {
   id: string;

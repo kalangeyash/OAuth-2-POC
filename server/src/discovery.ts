@@ -1,5 +1,5 @@
 import axios from "axios";
-import { record } from "./wireLog.js";
+import { record, startTimer } from "./wireLog.js";
 
 /** What this client reads from GET {fhirBaseUrl}/.well-known/smart-configuration */
 export interface Discovery {
@@ -36,16 +36,17 @@ export async function discover(fhirBaseUrl: string, options: { force?: boolean }
 
   const url = `${fhirBaseUrl}/.well-known/smart-configuration`;
   const logged = { direction: "client-fhir", step: "SMART discovery", method: "GET", endpoint: url } as const;
+  const stop = startTimer();
   const response = await axios
     .get(url, { headers: { Accept: "application/json" }, timeout: 15_000, validateStatus: () => true })
     .catch((error: Error) => {
-      record({ ...logged, status: "network error", result: { message: error.message }, outcome: "error" });
+      record({ ...logged, status: "network error", durationMs: stop(), result: { message: error.message }, outcome: "error" });
       throw new DiscoveryError(`Could not reach ${url}: ${error.message}`, url);
     });
 
   if (response.status !== 200 || !isObject(response.data)) {
     const body = typeof response.data === "string" ? response.data.slice(0, 300) : response.data;
-    record({ ...logged, status: response.status, result: body, outcome: "error" });
+    record({ ...logged, status: response.status, durationMs: stop(), result: body, outcome: "error" });
     throw new DiscoveryError(`SMART discovery failed: HTTP ${response.status} from ${url}`, url, response.status);
   }
 
@@ -53,6 +54,7 @@ export async function discover(fhirBaseUrl: string, options: { force?: boolean }
   record({
     ...logged,
     status: response.status,
+    durationMs: stop(),
     result: {
       authorization_endpoint: discovery.authorizationEndpoint,
       token_endpoint: discovery.tokenEndpoint,

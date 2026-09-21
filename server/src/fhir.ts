@@ -2,7 +2,7 @@ import axios from "axios";
 import type { SessionData } from "express-session";
 import { refreshAccessToken } from "./oauth.js";
 import type { AuthorizedContext } from "./session.js";
-import { record } from "./wireLog.js";
+import { record, startTimer } from "./wireLog.js";
 
 type SessionState = Partial<SessionData>;
 
@@ -82,6 +82,7 @@ export async function fhirGet(session: SessionState, path: string, step: string,
 async function sendWithAccessToken(auth: AuthorizedContext, path: string, step: string, note: string): Promise<FhirResponse> {
   const url = `${auth.fhirBaseUrl}/${path}`;
   const headers = { Accept: "application/fhir+json", Authorization: `Bearer ${auth.accessToken}` };
+  const stop = startTimer();
   const response = await axios.get(url, { headers, timeout: 20_000, validateStatus: () => true });
 
   const [endpoint, query = ""] = url.split("?");
@@ -92,6 +93,7 @@ async function sendWithAccessToken(auth: AuthorizedContext, path: string, step: 
     endpoint,
     params: { ...Object.fromEntries(new URLSearchParams(query)), Authorization: headers.Authorization },
     status: response.status,
+    durationMs: stop(),
     result: summarizeFhirResponse(response.data),
     outcome: response.status < 400 ? "ok" : "error",
     notes: [

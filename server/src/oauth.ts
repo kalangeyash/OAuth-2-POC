@@ -12,7 +12,7 @@ import {
   type PendingAuthorization,
   type TeachingError,
 } from "./session.js";
-import { record } from "./wireLog.js";
+import { record, startTimer } from "./wireLog.js";
 
 /** A problem starting or finishing the flow, explained for the audience. */
 export class OAuthFlowError extends Error {
@@ -160,6 +160,7 @@ export async function postToTokenEndpoint(request: TokenRequest): Promise<TokenE
     ...(headers.Authorization ? { Authorization: headers.Authorization } : {}),
   };
 
+  const stop = startTimer();
   let response: AxiosResponse;
   try {
     response = await axios.post(request.tokenEndpoint, form.toString(), {
@@ -176,6 +177,7 @@ export async function postToTokenEndpoint(request: TokenRequest): Promise<TokenE
       endpoint: request.tokenEndpoint,
       params: loggedRequest,
       status: "network error",
+      durationMs: stop(),
       result: { message: (error as Error).message },
       outcome: "error",
       notes: request.notes,
@@ -192,6 +194,7 @@ export async function postToTokenEndpoint(request: TokenRequest): Promise<TokenE
     endpoint: request.tokenEndpoint,
     params: loggedRequest,
     status: response.status,
+    durationMs: stop(),
     result: body,
     outcome: ok ? "ok" : "error",
     notes: request.notes,

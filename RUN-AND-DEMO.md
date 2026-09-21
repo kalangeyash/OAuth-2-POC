@@ -110,14 +110,15 @@ The `[wire #1 …] SMART discovery … → 200` line is the important one: it pr
 
 Run through this once on the machine and network you will present from, ideally shortly before. It takes about three minutes.
 
-- [ ] `npm test` → `tests 11`, `pass 11`, `fail 0`
+- [ ] `npm test` → `tests 15`, `pass 15`, `fail 0`
 - [ ] `npm run dev` → the terminal shows `SMART discovery … → 200`
-- [ ] http://localhost:5173 loads; the yellow **DEMO / SYNTHETIC DATA** banner is at the top; status reads **Not connected**
+- [ ] http://localhost:5173 loads; the amber **DEMO / SYNTHETIC DATA** banner is at the top; status reads **Not connected**; the flow band reads **Nothing has started yet**
+- [ ] Click the **Dark** / **Light** toggle once and check the room can read both; leave it on the one you want
 - [ ] The **SMART discovery** panel shows an `authorization_endpoint`, a `token_endpoint` and `S256`
 - [ ] Click **Connect** → the sandbox login page appears
 - [ ] Pick a patient, log in, click **Approve** → back at the app; status reads **Connected**
 - [ ] Click **Load patient and labs** → a patient banner and a lab table appear
-- [ ] The stepper shows all nine steps with ✓
+- [ ] The flow band reads **All nine steps completed**, and the left rail shows all nine steps with ✓
 - [ ] Click **Force token expiry** → the result reads `FHIR request → HTTP 401 → Refresh token → new access token → FHIR retry → HTTP 200`
 - [ ] Click **Log out**, then **Clear log** → you are back to a clean start
 
@@ -156,7 +157,7 @@ Three facts that explain most problems:
 | `npm run dev` | Start the Node OAuth client (:3001, auto-restarts on file changes) and the Vite UI (:5173) together |
 | `npm run dev:server` | Only the Node server |
 | `npm run dev:client` | Only the Vite UI |
-| `npm test` | The 11 unit tests: PKCE, state, scope comparison |
+| `npm test` | The 15 unit tests: PKCE, state, scope comparison, wire-log redaction and timing |
 | `npm run build` | Type-check server and client, build the UI into `dist/` |
 | `npm start` | Run the built app from `dist/` on one port (see [§15.1](#151-production-build-on-a-single-port)) |
 
@@ -198,12 +199,14 @@ Replace `http://localhost:3001/callback` with your new redirect URI, and put the
 - [ ] `npm run dev` in a terminal you can reach but that is **not** on the projector.
 - [ ] Open http://localhost:5173 in a fresh window. Make it full screen (Chrome on macOS: `Ctrl+Cmd+F`).
 - [ ] If you were logged in during the smoke test, click **Log out**.
-- [ ] Click **Clear log** in the wire log pane.
+- [ ] Click **Clear log** in the wire log pane, and set the wire-log filter back to **All**.
+- [ ] Set light or dark for the room. The choice is remembered, so do it once.
 
 ### 7.3 Projector fit
 
-- The layout is three columns at widths of **1100 px and above**, and stacks into one column below that. On a low-resolution projector, if the panes stack, zoom the browser out (`Cmd −` / `Ctrl −`) until the three columns return.
-- The base font is 18 px, designed to be read from the back of a room. `Cmd +` enlarges everything if the room is large.
+- The layout is three columns at **1280 px and above**. Between about 1180 px and 1280 px the left step rail folds away and the flow band across the top carries the "where are we" job on its own; below about 900 px everything stacks into one column. On a low-resolution projector, zoom out (`Cmd −` / `Ctrl −`) until the three columns return.
+- The base font is 19 px, designed to be read from the back of a room. `Cmd +` enlarges everything if the room is large.
+- **Pick the theme for the room before you start.** The toggle is in the header, next to the connection status. Dark reads better on a bright projector in a dark room; light is safer on a washed-out screen. The choice is remembered.
 - Check the room from the back once. **The layout has only been checked in headless Chrome at 1920×1080**, not on a real projector.
 
 ---
@@ -212,20 +215,23 @@ Replace `http://localhost:3001/callback` with your new redirect URI, and put the
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│  DEMO / SYNTHETIC DATA  (yellow banner)                                        │
+│  DEMO / SYNTHETIC DATA  (amber banner)                                         │
 ├───────────────────────────────────────────────────────────────────────────────┤
-│  SMART on FHIR: the OAuth 2.0 authorization code flow   ● Not connected  [Log out]
+│  SMART on FHIR: the OAuth 2.0 …      ● Not connected   [Dark]   [Log out]      │
+├───────────────────────────────────────────────────────────────────────────────┤
+│ ▌Nothing has started yet                              0 of 9 steps done ▁▁▁▁  │  ← FLOW BAND
+│ ▌Click Connect. The Node server builds an authorization request, then …       │
 ├──────────────┬──────────────────────────────┬─────────────────────────────────┤
 │ OAuth flow   │ Application                  │ Wire log                        │
-│              │                              │                                 │
+│              │                              │  [All][Front][Back][Errors]     │
 │ 1 Connect    │ Connect / Authorization      │ Browser │ Node │ Auth │ FHIR    │
-│ 2 Redirect   │ Patient + ID token           │    ┊────────────►┊              │
-│ 3 Login      │ Requested vs granted scope   │         │─────────►│            │
-│ 4 Consent    │ Lab results                  │         │──────────────────►│   │
-│ 5 Callback   │ SMART discovery              │                                 │
-│ ┌BACK CHANNEL│                              │ [Expand all] [Collapse all]     │
-│ │6 Token exch│ BREAK SOMETHING              │ [Clear log]                     │
-│ │7 Token recv│  six demo buttons + result   │                                 │
+│ 2 Redirect   │ Patient + ID token           │ #40 t+5.8s Redirect back     —  │
+│ 3 Login      │ Requested vs granted scope   │    ┊◄──────────┊                │
+│ 4 Consent    │ Lab results                  │ #42 t+6.8s Token exch 1019ms 200│
+│ 5 Callback   │ SMART discovery              │         │─────────►│            │
+│ ┌BACK CHANNEL│                              │           200 · 1019 ms         │
+│ │6 Token exch│ BREAK SOMETHING              │ [Expand all] [Collapse all]     │
+│ │7 Token recv│  six demo buttons + result   │ [Clear log]                     │
 │ └────────────│                              │                                 │
 │ 8 FHIR call  │                              │                                 │
 │ 9 Rendered   │                              │                                 │
@@ -234,11 +240,15 @@ Replace `http://localhost:3001/callback` with your new redirect URI, and put the
 
 | Pane | What to point at |
 |---|---|
-| **Banner** | The synthetic-data warning. Mention it once at the start |
-| **Status** (top right) | `Not connected` → `Waiting for the authorization server` → `Connected`. Red `Node server unreachable` means `npm run dev` stopped |
-| **OAuth flow** (left) | The nine steps. ✓ done, ✕ failed, a number means not reached. Steps 6–7 are grouped as **BACK CHANNEL**. **Updated from server events, not button clicks** — say this, it's what makes the stepper trustworthy |
-| **Application** (centre) | Before connecting: the Connect card and SMART discovery. After: authorization facts, patient, ID token, scope comparison, labs. Always at the bottom: **BREAK SOMETHING** |
-| **Wire log** (right) | A live sequence diagram. Four lanes: **Browser, Node client, Authorization server, FHIR server**. **Dashed arrows** = browser redirects (front channel). **Solid arrows** = direct HTTP (back channel). Red = error. Click an entry to expand parameters, response and notes. Hatched values are redacted |
+| **Banner** | The synthetic-data warning. Mention it once at the start. It stays full-strength amber in both themes on purpose |
+| **Status** (top right) | `Not connected` → `Waiting for the authorization server` (amber) → `Connected` (green). Red `Node server unreachable` means `npm run dev` stopped. Next to it: the light/dark toggle |
+| **Flow band** (full width) | **The one thing to point at when someone asks "where are we?"** A headline, one plain sentence, and how many of the nine steps are done. It is the only part of the screen that speaks in sentences, and it has a state of its own for *"your browser is at the authorization server"* — the interval this app cannot observe, because login and consent happen somewhere else |
+| **OAuth flow** (left) | The nine steps and who performs each. ✓ done, ✕ failed, a number means not reached. Steps 6–7 are grouped as **BACK CHANNEL**. **Updated from server events, not button clicks** — say this, it's what makes the rail trustworthy. This rail is the part that folds away on a narrow window; the band does not |
+| **Application** (centre) | Before connecting: the Connect card, the scopes this client *will ask for*, and SMART discovery. After: authorization facts, patient, ID token, scope comparison, labs. Always at the bottom: **BREAK SOMETHING** |
+| **Wire log** (right) | A live sequence diagram. Four lanes: **Browser, Node client, Authorization server, FHIR server**. **Dashed arrows** = browser redirects (front channel). **Solid arrows** = direct HTTP (back channel). Red = error. Hatched values are redacted. Each row is one request *and* its response: the `#id`, `t+` elapsed since Connect, the step, the round-trip time and the status line up in columns so the log can be read while it streams. A dotted return leg under each arrow carries the status and duration back to the caller |
+| **Wire log controls** | **All / Front channel / Back channel / Errors** filter the list. Clicking an entry expands it into **Request** and **Response** side by side. **Focus this exchange** dims everything else *in place* — the surrounding sequence stays visible, and new entries stop stealing the scroll. `Escape` clears it |
+
+**A note on timing.** Two different numbers appear, deliberately in different columns. `1019 ms` is the real round trip the Node server measured — it only ever appears on entries where the server actually made an outbound request. `t+6.8s` is wall-clock time since **Connect**, so it includes however long you spent typing on the sandbox's login page. Entries with no network traffic of their own — the state check, "token received" — show `—` rather than a blank, because a blank would suggest a missing response rather than no request at all.
 
 ---
 
@@ -248,10 +258,11 @@ A ten-minute core, then optional extensions. Timings are a guide. **Click** is w
 
 ### 0:00 — The setup
 
-**Show:** the whole screen, clean, not connected.
+**Show:** the whole screen, clean, not connected. The flow band reads *Nothing has started yet*.
 
 **Say:**
 - "This is a teaching demo against a public sandbox with synthetic patients." *(point at the banner)*
+- "This strip is where we are." *(point at the flow band)* "It tells you in one sentence what just happened, the whole way through. If you lose the thread, read that line."
 - "Four actors, four columns in the wire log: the browser, our Node server, the authorization server, and the FHIR server with the data."
 - "The key design decision: **the Node server is the OAuth client, not the browser.** The browser will never hold a token. I'll prove that later."
 - "Dashed arrows go through the browser — anyone can see those. Solid arrows are server-to-server."
@@ -426,15 +437,17 @@ While connected, open DevTools (`Cmd+Option+I` / `F12`):
 1. **Application → Cookies → `http://localhost:5173`**: one cookie, `smart_demo_sid`, with **HttpOnly ✓** and **SameSite Lax**. Its value is a signed session ID, not a token.
 2. **Console**:
    ```js
-   document.cookie        // ""  — HttpOnly hides it from JavaScript
-   localStorage.length    // 0
-   sessionStorage.length  // 0
+   document.cookie              // ""  — HttpOnly hides it from JavaScript
+   sessionStorage.length        // 0
+   Object.entries(localStorage) // [["smart-demo-theme","dark"]]  — the whole of it
    ```
 3. **Network**: click `session` (the request the UI makes every 2 seconds) → **Response**. Show `hasRefreshToken: true`, `secondsRemaining`, `patientId` — flags and metadata, **no token values**.
 
-**Say:** "If an attacker got JavaScript running on this page, there's nothing here to steal."
+**Say:** "There is exactly one thing in this browser's storage, and here it is: which theme I picked. No access token, no refresh token, no ID token, no patient ID. If an attacker got JavaScript running on this page, that is the entire haul."
 
-*(Verified in a real Chrome run: empty `document.cookie`, empty storage, no JWT-shaped strings anywhere in the page.)*
+This is a stronger demonstration than an empty store, because the audience watches you *enumerate* it rather than take an empty count on trust. If you prefer the empty version, clear the key first with `localStorage.clear()` and leave the theme on whatever the operating system prefers.
+
+*(Verified in a real Chrome run: empty `document.cookie`, `sessionStorage.length === 0`, one non-secret `localStorage` key, and no JWT-shaped strings anywhere in the page.)*
 
 ### 11.2 Try to request a different patient
 
@@ -520,8 +533,8 @@ The patient you picked may have no laboratory observations. Log in again and pic
 **Force token expiry is greyed out**
 You're not connected. Click **Connect** first.
 
-**The three panes are stacked into one column**
-The window is narrower than 1100 px. Zoom out or widen the window.
+**The panes are stacked, or the left step rail has disappeared**
+The window is narrower than 1280 px. The flow band at the top still shows where the flow is. Zoom out (`Cmd −`) or widen the window to bring the rail and the three columns back.
 
 **Fonts look plain**
 The fonts load from Google Fonts. Offline or blocked, the app falls back to system fonts; everything still works.

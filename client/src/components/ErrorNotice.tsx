@@ -1,7 +1,14 @@
 import type { TeachingError } from "../types";
 
-/** A real OAuth/FHIR error from the server, shown with the concept it illustrates. */
-export function ErrorNotice({ error }: { error: TeachingError }) {
+interface Props {
+  error: TeachingError;
+  /** Offered only when the server said re-authentication is required. */
+  onReconnect?: () => void;
+  onRetry?: () => void;
+}
+
+/** A failure, stated plainly, next to the provider's own words. */
+export function ErrorNotice({ error, onReconnect, onRetry }: Props) {
   const details = (
     [
       ["HTTP", error.status],
@@ -12,7 +19,7 @@ export function ErrorNotice({ error }: { error: TeachingError }) {
   ).filter(([, value]) => value !== undefined && value !== "");
 
   return (
-    <div className="notice-error" role="alert">
+    <div className="notice-error">
       <p className="notice-title">
         {error.step}: {error.message}
       </p>
@@ -21,12 +28,26 @@ export function ErrorNotice({ error }: { error: TeachingError }) {
           {details.map(([label, value]) => (
             <div key={label}>
               <dt>{label}</dt>
-              <dd>{value}</dd>
+              <dd>{String(value)}</dd>
             </div>
           ))}
         </dl>
       )}
       {error.concept && <p className="notice-concept">Concept: {error.concept}</p>}
+      {(onReconnect || onRetry) && (
+        <div className="notice-actions">
+          {onReconnect && (
+            <button type="button" className="button small" onClick={onReconnect}>
+              Reconnect
+            </button>
+          )}
+          {onRetry && (
+            <button type="button" className="button small" onClick={onRetry}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

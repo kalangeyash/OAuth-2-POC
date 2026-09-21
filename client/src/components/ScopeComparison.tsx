@@ -1,32 +1,69 @@
-import type { ScopeDiff } from "../types";
+import type { ScopeDiff, TeachingError } from "../types";
 
 interface Props {
   current: ScopeDiff | null;
+  /** The scope string this client asks for, known before any token response. */
+  requestedScope: string | null;
+  authorized: boolean;
+  lastError: TeachingError | null;
   narrow?: ScopeDiff | null;
   broad?: ScopeDiff | null;
 }
 
-export function ScopeComparison({ current, narrow, broad }: Props) {
-  if (!current && !broad) return null;
+/**
+ * Requested versus granted.
+ *
+ * This panel never returns null. It used to disappear entirely before connecting,
+ * taking one of the two most teachable ideas off the screen; now it shows what is
+ * about to be asked for, so the audience can read the request before the answer.
+ */
+export function ScopeComparison({ current, requestedScope, authorized, lastError, narrow, broad }: Props) {
+  const requested = (requestedScope ?? "").split(" ").filter(Boolean);
+
   return (
-    <section className="section">
+    <section className="section" aria-label="Requested versus granted scope">
       <h2>Requested vs granted scope</h2>
       <p className="lede">Requested permissions are not necessarily the permissions that are granted.</p>
-      {current && <ScopeTable diff={current} />}
+
+      {current ? (
+        <ScopeTable diff={current} />
+      ) : lastError && !authorized ? (
+        <p className="absent">
+          No scope was granted: the flow stopped at {lastError.step.toLowerCase()}. Connect again to see a grant.
+        </p>
+      ) : requested.length > 0 ? (
+        <>
+          <p className="scope-summary">This client will ask for {requested.length} scopes.</p>
+          <ul className="chips">
+            {requested.map((scope) => (
+              <li key={scope} className="chip chip-strong">
+                {scope}
+              </li>
+            ))}
+          </ul>
+          <p className="lede">
+            The granted scope appears here after the token response, next to what was asked for. Anything the server
+            refuses is struck through.
+          </p>
+        </>
+      ) : (
+        <p className="absent">Waiting for the Node server to report the scope it will request.</p>
+      )}
+
       {broad && (
         <>
           <h3 className="versus-title">Narrow request vs broad request</h3>
           <div className="versus">
             <div>
-              <h4>NARROW REQUEST</h4>
+              <h4>Narrow request</h4>
               {narrow ? (
                 <ScopeTable diff={narrow} compact />
               ) : (
-                <p className="absent">No narrow grant recorded yet. Connect normally to record one.</p>
+                <p className="absent">No narrow grant recorded yet. Connect normally to record one to compare against.</p>
               )}
             </div>
             <div>
-              <h4>BROAD REQUEST</h4>
+              <h4>Broad request</h4>
               <ScopeTable diff={broad} compact />
             </div>
           </div>
@@ -34,6 +71,14 @@ export function ScopeComparison({ current, narrow, broad }: Props) {
       )}
     </section>
   );
+}
+
+/* Three visually distinct verdicts: dropped (danger), grant unknown (warning),
+   everything granted (plain). "Unknown" is not the same as "nothing was dropped". */
+function summaryClass(diff: ScopeDiff): string {
+  if (!diff.grantedReported) return "scope-summary is-unknown";
+  if (diff.dropped.length > 0) return "scope-summary is-dropped";
+  return "scope-summary";
 }
 
 function ScopeTable({ diff, compact = false }: { diff: ScopeDiff; compact?: boolean }) {
@@ -48,7 +93,7 @@ function ScopeTable({ diff, compact = false }: { diff: ScopeDiff; compact?: bool
 
   return (
     <>
-      <p className={diff.dropped.length > 0 ? "scope-summary is-dropped" : "scope-summary"}>{summary}</p>
+      <p className={summaryClass(diff)}>{summary}</p>
       <div className="table-scroll">
         <table className="scopes">
           <thead>

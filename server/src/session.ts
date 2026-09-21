@@ -81,7 +81,7 @@ export interface TeachingError {
 
 /** Status of each of the nine steps in the UI stepper. Set only by real server events. */
 export type StepStatus = "pending" | "current" | "done" | "failed";
-const FLOW_STEP_COUNT = 9;
+export const FLOW_STEP_COUNT = 9;
 
 declare module "express-session" {
   interface SessionData {

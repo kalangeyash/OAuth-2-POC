@@ -147,7 +147,9 @@ The important consequence: **PKCE is what makes the flow safe here**, because th
      │◄─ 9. safe JSON ─────│                          │                       │
 ```
 
-The nine numbered steps are exactly the nine steps in the UI stepper ([client/src/components/FlowStepper.tsx](client/src/components/FlowStepper.tsx)). Their statuses are set by **real server events**, never by button clicks.
+The nine numbered steps are exactly the nine steps in the UI. Their labels live in [client/src/flow.ts](client/src/flow.ts), which also holds `describeFlow()`, the one function that turns the raw flow array into the sentence shown in the flow band. They are drawn twice, for two different questions: [client/src/components/FlowRail.tsx](client/src/components/FlowRail.tsx) lists the steps and who performs each, and [client/src/components/FlowBand.tsx](client/src/components/FlowBand.tsx) says where the flow is right now. Their statuses are set by **real server events**, never by button clicks.
+
+Steps 3 and 4 are never individually marked done: login and consent happen at the authorization server, where this app cannot observe them. That interval is reported by the separate `awaitingAuthorizationServer` flag, and the flow band treats it as a state in its own right rather than a gap.
 
 ### 2.2 Step 0 — Discovery
 
@@ -400,7 +402,7 @@ Every browser storage option leaks:
 
 | Where | Problem |
 |---|---|
-| `localStorage` / `sessionStorage` | Readable by any JavaScript on the page — one XSS or one bad dependency and the token is gone |
+| `localStorage` / `sessionStorage` | Readable by any JavaScript on the page — one XSS or one bad dependency and the token is gone. This app stores exactly one thing there, `smart-demo-theme`, holding the word `light` or `dark` |
 | A non-`httpOnly` cookie | Same |
 | A JS variable | Same, plus it dies on refresh |
 | The URL | Browser history, referrer headers, server logs, shoulder-surfing |
@@ -585,12 +587,18 @@ The second returns a **Bundle** — `total`, an `entry` array, and `link` relati
 | [server/src/fhir.ts](server/src/fhir.ts) | The one FHIR wrapper (401 → refresh → retry), patient/labs, observation flattening |
 | [server/src/scope.ts](server/src/scope.ts) | `parseScope`, `diffScopes`, `unadvertisedScopes`, `broadenPatientScopes`, `ensureLaunchScope` |
 | [server/src/redaction.ts](server/src/redaction.ts) | **The** redaction helper; shared with the client |
-| [server/src/wireLog.ts](server/src/wireLog.ts) | Ring buffer of 500 entries; redacts before storing and printing |
+| [server/src/wireLog.ts](server/src/wireLog.ts) | Ring buffer of 500 entries; redacts before storing and printing; `startTimer()` for `durationMs` |
 | [server/src/routes/auth.ts](server/src/routes/auth.ts) | `/auth/login`, `/launch`, `/callback`, `/auth/logout` |
 | [server/src/routes/api.ts](server/src/routes/api.ts) | `/api/session`, `/api/discovery`, `/api/patient`, `/api/labs`, `/api/wirelog` |
 | [server/src/routes/demo.ts](server/src/routes/demo.ts) | The six failure demos and their fact-based explanations |
 | [server/src/index.ts](server/src/index.ts) | Wiring, static files, the error handler |
-| [client/src/](client/src/) | React UI: stepper, discovery, patient, scopes, labs, wire log, demo panel |
+| [client/src/flow.ts](client/src/flow.ts) | The nine step labels and `describeFlow()`: raw flow array → the sentence in the band |
+| [client/src/theme.ts](client/src/theme.ts) | Light/dark. The only thing this app stores in the browser, and it is not a secret |
+| [client/src/components/FlowBand.tsx](client/src/components/FlowBand.tsx) | Where the flow is right now, in a sentence |
+| [client/src/components/FlowRail.tsx](client/src/components/FlowRail.tsx) | The nine steps and who performs each |
+| [client/src/components/WireLog.tsx](client/src/components/WireLog.tsx) | The sequence diagram: four lanes, timing, request/response pairing, focus mode |
+| [client/src/styles.css](client/src/styles.css) | One stylesheet. Design tokens, both themes, `@layer` ordering |
+| [client/src/](client/src/) | The rest of the React UI: discovery, patient, scopes, labs, demo panel |
 
 ### 6.2 HTTP surface
 
@@ -640,6 +648,8 @@ Six directions, which map to the four lanes drawn in the UI:
 
 `record()` redacts first, then stores, then prints to the server console. Because redaction happens **before storage**, no later code path — API response, copy button, console — can expose a secret it never held.
 
+**Timing.** An entry carries `durationMs` **if and only if the Node server made an outbound HTTP request and waited for it** — discovery, the token exchange, every refresh, and every FHIR call. It is deliberately absent on `internal` entries (no network traffic) and on `browser-client` entries (the browser calling us). That rule is itself teachable: every entry with a number beside it is a real round trip the Node server made; the ones without are either the browser talking to us, or the server thinking. The UI also shows `t+` elapsed time measured from the most recent `Connect`, which is wall-clock and includes however long the login took — the two numbers answer different questions, so they are shown in different columns.
+
 ### 6.5 Error handling
 
 One Express error handler maps typed errors to teaching output:
@@ -657,11 +667,12 @@ API calls get JSON (redacted); browser navigations get redirected back to the UI
 
 ### 6.6 Tests
 
-`npm test` runs 11 assertions with `node:test`, covering exactly what the spec asked for:
+`npm test` runs 15 assertions with `node:test`, covering exactly what the spec asked for:
 
 - **PKCE** — verifier is 64 base64url chars and differs each time; challenge is unpadded base64url and never equals the verifier; the RFC 7636 Appendix B vector is reproduced exactly.
 - **state** — a valid state is accepted; a different or missing one is a mismatch; one older than 10 minutes is expired; a pending authorization can be consumed only once.
 - **scope** — identical grants; a granted subset; a dropped scope; a scope added by the server.
+- **wire log** — a numeric `durationMs` survives redaction as a number; secrets in an entry are still redacted whether or not it carries a duration; `listEntries(sinceId)` returns only newer entries; an entry with no outbound request carries no duration.
 
 ---
 

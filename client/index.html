@@ -4,15 +4,55 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SMART on FHIR OAuth Demo (synthetic data)</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231d4ed8'/%3E%3Cpath d='M11 15v-3a5 5 0 0 1 10 0v3' fill='none' stroke='%23fff' stroke-width='2.5'/%3E%3Crect x='8' y='15' width='16' height='11' rx='2' fill='%23fff'/%3E%3C/svg%3E"
+    />
+    <meta
+      name="description"
+      content="A teaching demo of the SMART on FHIR OAuth 2.0 authorization code flow with PKCE. Synthetic data only."
+    />
+    <!--
+      Resolve the theme before the first paint, so data-theme is always a concrete
+      "light" or "dark" and styles.css never needs a prefers-color-scheme query.
+      The key name is shared with client/src/theme.ts — change both together.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("smart-demo-theme");
+          if (stored !== "light" && stored !== "dark") {
+            stored = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          document.documentElement.dataset.theme = stored;
+        } catch (error) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <!--
+      In dev, Vite injects styles.css with JavaScript, so the first frame would
+      otherwise be unstyled HTML on the browser's white. These two grounds must
+      match --surface-page in styles.css. color-scheme here also paints the
+      scrollbars of the three scrolling panes correctly from the first frame.
+    -->
+    <style>
+      html[data-theme="light"] { background: #eceff3; color-scheme: light; }
+      html[data-theme="dark"] { background: #0f1720; color-scheme: dark; }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;700&family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;700&family=Atkinson+Hyperlegible+Next:wght@400;500;600;700&display=swap"
     />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      This demo needs JavaScript: it renders the OAuth flow, the wire log and the failure
+      demonstrations in the browser. The Node server at http://localhost:3001 still works without it.
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -35,9 +35,25 @@ export interface WireEntry {
   endpoint?: string;
   params?: Record<string, unknown>;
   status?: number | string;
+  /*
+   * Wall-clock milliseconds the Node server waited for an outbound HTTP response.
+   * Present if and only if this server made a request and waited for it, so a
+   * "browser → Node client" hop or an internal check never carries one. Mirrored in
+   * client/src/types.ts; keep the two in step.
+   */
+  durationMs?: number;
   result?: unknown;
   notes?: string[];
   outcome: "ok" | "error" | "info";
+}
+
+/*
+ * One stopwatch per outbound request. performance.now() is monotonic, so a clock
+ * adjustment mid-demo cannot produce a negative or wild duration.
+ */
+export function startTimer(): () => number {
+  const started = performance.now();
+  return () => Math.round(performance.now() - started);
 }
 
 const MAX_ENTRIES = 500;

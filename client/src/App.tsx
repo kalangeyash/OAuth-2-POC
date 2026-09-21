@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, navigateTo, toTeachingError } from "./api";
+import { describeFlow } from "./flow";
+import { useTheme } from "./theme";
 import { DiscoveryPanel } from "./components/DiscoveryPanel";
 import { ErrorNotice } from "./components/ErrorNotice";
 import { FailureDemoPanel } from "./components/FailureDemoPanel";
-import { FlowStepper } from "./components/FlowStepper";
+import { FlowBand } from "./components/FlowBand";
+import { FlowRail } from "./components/FlowRail";
 import { LabTable } from "./components/LabTable";
 import { PatientPanel } from "./components/PatientPanel";
 import { ScopeComparison } from "./components/ScopeComparison";
 import { WireLog } from "./components/WireLog";
-import type { DiscoveryInfo, LabResults, PatientSummary, SessionInfo, TeachingError, WireEntry } from "./types";
+import type { DiscoveryInfo, LabResults, Load, PatientSummary, SessionInfo, TeachingError, WireEntry } from "./types";
 
 const SESSION_POLL_MS = 2000;
 const WIRE_LOG_POLL_MS = 1000;
@@ -16,17 +19,18 @@ const MAX_WIRE_ENTRIES = 500;
 
 export function App() {
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [serverReachable, setServerReachable] = useState(true);
-  const [discovery, setDiscovery] = useState<DiscoveryInfo | null>(null);
-  const [discoveryError, setDiscoveryError] = useState<TeachingError | null>(null);
-  const [patient, setPatient] = useState<PatientSummary | null>(null);
-  const [labs, setLabs] = useState<LabResults | null>(null);
+  const [discovery, setDiscovery] = useState<Load<DiscoveryInfo>>({ state: "loading" });
+  const [discoveryRefreshing, setDiscoveryRefreshing] = useState(false);
+  const [patient, setPatient] = useState<Load<PatientSummary>>({ state: "idle" });
+  const [labs, setLabs] = useState<Load<LabResults>>({ state: "idle" });
   const [requestError, setRequestError] = useState<TeachingError | null>(null);
-  const [loadingData, setLoadingData] = useState(false);
   const [demoRunning, setDemoRunning] = useState(false);
   const [entries, setEntries] = useState<WireEntry[]>([]);
   const lastEntryId = useRef(0);
   const pollingWireLog = useRef(false);
+  const { theme, setTheme } = useTheme();
 
   // The UI learns the authorization state from safe metadata only. It never receives a token.
   const refreshSession = useCallback(async () => {
@@ -35,6 +39,8 @@ export function App() {
       setServerReachable(true);
     } catch {
       setServerReachable(false);
+    } finally {
+      setSessionLoaded(true);
     }
   }, []);
 
@@ -71,11 +77,15 @@ export function App() {
   }, []);
 
   const loadDiscovery = useCallback(async (force: boolean) => {
+    if (force) setDiscoveryRefreshing(true);
+    else setDiscovery({ state: "loading" });
     try {
-      setDiscovery(force ? await api.refreshDiscovery() : await api.discovery());
-      setDiscoveryError(null);
+      const data = force ? await api.refreshDiscovery() : await api.discovery();
+      setDiscovery({ state: "ready", data });
     } catch (error) {
-      setDiscoveryError(toTeachingError(error));
+      setDiscovery({ state: "error", error: toTeachingError(error) });
+    } finally {
+      setDiscoveryRefreshing(false);
     }
   }, []);
 
@@ -88,28 +98,32 @@ export function App() {
   // Displayed data belongs to an authorization. When that is gone, so is the data.
   useEffect(() => {
     if (!authorized) {
-      setPatient(null);
-      setLabs(null);
+      setPatient({ state: "idle" });
+      setLabs({ state: "idle" });
     }
   }, [authorized]);
 
   // Stepper step 9 is reported only after React has rendered the FHIR data.
   useEffect(() => {
-    if (patient && labs) void api.markRendered().then(refreshSession).catch(() => undefined);
+    if (patient.state === "ready" && labs.state === "ready") {
+      void api.markRendered().then(refreshSession).catch(() => undefined);
+    }
   }, [patient, labs, refreshSession]);
 
   async function loadPatientData() {
-    setLoadingData(true);
+    setPatient({ state: "loading" });
+    setLabs({ state: "loading" });
     setRequestError(null);
     try {
       // One request at a time: either may refresh the tokens held in the same server-side session.
       const { patient: loaded } = await api.patient();
-      setPatient(loaded);
-      setLabs(await api.labs());
+      setPatient({ state: "ready", data: loaded });
+      setLabs({ state: "ready", data: await api.labs() });
     } catch (error) {
-      setRequestError(toTeachingError(error));
+      const teaching = toTeachingError(error);
+      setPatient((current) => (current.state === "ready" ? current : { state: "error", error: teaching }));
+      setLabs({ state: "error", error: teaching });
     } finally {
-      setLoadingData(false);
       void refreshSession();
     }
   }
@@ -138,18 +152,40 @@ export function App() {
     setEntries([]);
   }
 
+  const loadingData = patient.state === "loading" || labs.state === "loading";
+  const hasData = patient.state === "ready" && labs.state === "ready";
+
+  const narration = useMemo(
+    () =>
+      describeFlow({
+        flow: session?.flow ?? [],
+        awaitingAuthorizationServer: session?.awaitingAuthorizationServer ?? false,
+        authorized,
+        lastError: session?.lastError ?? null,
+        serverReachable,
+        sessionLoaded,
+        loadingData,
+        hasData,
+      }),
+    [session, authorized, serverReachable, sessionLoaded, loadingData, hasData],
+  );
+
   let connection = { className: "connection", text: "Not connected" };
   if (!serverReachable) {
-    connection = { className: "connection is-down", text: "Node server unreachable. Is npm run dev running?" };
+    connection = { className: "connection is-down", text: "Node server unreachable" };
   } else if (authorized) {
     connection = { className: "connection is-connected", text: "Connected" };
   } else if (session?.awaitingAuthorizationServer) {
-    connection = { className: "connection", text: "Waiting for the authorization server" };
+    connection = { className: "connection is-waiting", text: "Waiting for the authorization server" };
   }
 
   const visibleError = session?.lastError ?? requestError;
   const discoveryPanel = (
-    <DiscoveryPanel discovery={discovery} error={discoveryError} onRefresh={() => void loadDiscovery(true)} />
+    <DiscoveryPanel
+      discovery={discovery}
+      refreshing={discoveryRefreshing}
+      onRefresh={() => void loadDiscovery(true)}
+    />
   );
 
   return (
@@ -166,37 +202,61 @@ export function App() {
             Authorization Code with PKCE. The Node server is the OAuth client, and the browser never holds a token.
           </p>
         </div>
-        <p className={connection.className}>
-          <span className="connection-dot" aria-hidden="true" />
-          {connection.text}
-        </p>
-        {authorized && (
-          <button type="button" className="button" onClick={() => void logOut()}>
-            Log out
+        <div className="masthead-actions">
+          <p className={connection.className} role="status" aria-live="polite" aria-atomic="true">
+            <span className="connection-dot" aria-hidden="true" />
+            {connection.text}
+          </p>
+          <button
+            type="button"
+            className="button small theme-toggle"
+            aria-pressed={theme === "dark"}
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {theme === "dark" ? "Light" : "Dark"}
           </button>
-        )}
+          {authorized && (
+            <button type="button" className="button small" onClick={() => void logOut()}>
+              Log out
+            </button>
+          )}
+        </div>
       </header>
 
+      <FlowBand narration={narration} />
+
       <main className="panes">
-        <aside className="pane pane-flow">
-          <FlowStepper
-            steps={session?.flow ?? []}
-            awaitingAuthorizationServer={session?.awaitingAuthorizationServer ?? false}
-          />
+        <aside className="pane pane-flow" aria-label="OAuth flow steps" tabIndex={-1}>
+          <FlowRail steps={session?.flow ?? []} known={sessionLoaded && serverReachable} />
         </aside>
 
         <section className="pane pane-app" aria-label="Application and FHIR data">
-          {visibleError && <ErrorNotice error={visibleError} />}
+          {/* Always present, so a screen reader announces a change into it. */}
+          <div role="status" aria-live="assertive" aria-atomic="true">
+            {visibleError && (
+              <ErrorNotice
+                error={visibleError}
+                onReconnect={visibleError.reauthRequired ? () => navigateTo("/auth/login") : undefined}
+              />
+            )}
+          </div>
 
           {authorized && session ? (
             <>
-              <PatientPanel session={session} patient={patient} loading={loadingData} onLoad={() => void loadPatientData()} />
+              <PatientPanel
+                session={session}
+                patient={patient}
+                onLoad={() => void loadPatientData()}
+              />
               <ScopeComparison
                 current={session.scopeDiff}
+                requestedScope={session.requestedScope}
+                authorized={authorized}
+                lastError={session.lastError ?? null}
                 narrow={session.scopeComparison?.narrow}
                 broad={session.scopeComparison?.broad}
               />
-              {labs && <LabTable labs={labs} />}
+              <LabTable labs={labs} onRetry={() => void loadPatientData()} />
               <details className="section discovery-details">
                 <summary>SMART discovery document</summary>
                 {discoveryPanel}
@@ -217,6 +277,9 @@ export function App() {
               </section>
               <ScopeComparison
                 current={null}
+                requestedScope={session?.requestedScope ?? null}
+                authorized={false}
+                lastError={session?.lastError ?? null}
                 narrow={session?.scopeComparison?.narrow}
                 broad={session?.scopeComparison?.broad}
               />
@@ -234,7 +297,7 @@ export function App() {
         </section>
 
         <section className="pane pane-wire" aria-label="Wire log">
-          <WireLog entries={entries} onClear={() => void clearWireLog()} />
+          <WireLog entries={entries} serverReachable={serverReachable} loaded={sessionLoaded} onClear={() => void clearWireLog()} />
         </section>
       </main>
     </div>

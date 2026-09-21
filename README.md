@@ -17,7 +17,8 @@ A runnable, projector-friendly demonstration of the SMART App Launch flow: OAuth
 
 - The **Node/Express server is the OAuth client.** It discovers the SMART endpoints, builds the authorization request, validates `state`, exchanges the code, keeps the tokens and calls the FHIR server.
 - The **React UI never receives a token.** It shows the flow from safe metadata and a redacted wire log.
-- The screen has three panes: an **OAuth flow stepper** driven by real server events, an **application view** (discovery, patient, requested vs granted scope, labs, decoded ID token) and a **wire log** drawn as a live sequence diagram across four columns: Browser, Node client, Authorization server, FHIR server.
+- The screen has a **flow band** across the top that says in one sentence where the flow is right now, and three panes below it: an **OAuth flow rail** of nine steps driven by real server events, an **application view** (discovery, patient, requested vs granted scope, labs, decoded ID token) and a **wire log** drawn as a live sequence diagram across four columns: Browser, Node client, Authorization server, FHIR server.
+- Light and dark themes, both projector-legible. The toggle is in the header.
 - A **BREAK SOMETHING** panel runs six real failures on the server and shows the provider's actual response.
 
 The OAuth implementation is deliberately hand-written and flat, so it can be explained line by line. There is no OAuth library.
@@ -54,7 +55,7 @@ Open **http://localhost:5173**. Use `localhost`, not `127.0.0.1`: the session co
 |---|---|
 | `npm run dev` | Starts the Node OAuth client on :3001 and the Vite UI on :5173 |
 | `npm run dev:server` / `npm run dev:client` | Starts one of them |
-| `npm test` | Unit tests: PKCE, state, scope comparison |
+| `npm test` | Unit tests: PKCE, state, scope comparison, wire-log redaction |
 | `npm run build` | Type-checks both projects and builds `dist/` |
 | `npm start` | Runs the build on :3001 only (set `CLIENT_URL=http://localhost:3001` first) |
 
@@ -87,12 +88,14 @@ In development the browser talks to Vite, which forwards `/auth`, `/api`, `/demo
 | [server/src/fhir.ts](server/src/fhir.ts) | The one FHIR wrapper: 401 → one refresh → one retry |
 | [server/src/redaction.ts](server/src/redaction.ts) | The one redaction helper, shared by server logs, the wire log API and the React wire log |
 | [server/src/routes/demo.ts](server/src/routes/demo.ts) | The six failure demonstrations |
+| [client/src/flow.ts](client/src/flow.ts) | The nine step labels, and the one function that turns flow state into a sentence |
+| [client/src/styles.css](client/src/styles.css) | The design tokens and both themes |
 
 ## F. Ten-minute presenter script
 
 **Before you start:** run `npm run dev`, open http://localhost:5173 full screen, and click **Clear log**.
 
-1. **0:00 · Explain the architecture.** Point at the yellow synthetic-data banner and the three panes. In the wire log, the four columns are the four actors. Dashed arrows are browser redirects (front channel). Solid arrows are direct HTTP calls, including Node talking to the authorization and FHIR servers (back channel).
+1. **0:00 · Explain the architecture.** Point at the yellow synthetic-data banner, the flow band and the three panes. In the wire log, the four columns are the four actors. Dashed arrows are browser redirects (front channel). Solid arrows are direct HTTP calls, including Node talking to the authorization and FHIR servers (back channel).
 2. **1:00 · Show discovery.** In *SMART discovery*, the client learned `authorization_endpoint`, `token_endpoint`, `code_challenge_methods_supported: S256` and `capabilities` from `.well-known/smart-configuration`. Nothing is hardcoded. Note that `scopes_supported` does not list `patient/Patient.read`; the list does not have to be complete.
 3. **2:00 · Click Connect.** The wire log shows *Connect* and then *Authorization request* (a dashed arrow to the authorization server). Stepper steps 1 and 2 turn done.
 4. **3:00 · Explain the authorization request.** Expand the entry and walk through `state` (CSRF protection), `code_challenge` (PKCE: only the hash is sent), `aud`, `scope` and `redirect_uri`. Everything in it is visible to the browser, so none of it is secret. On the sandbox's login page, choose a patient with labs (for example *Abdul Koepp*), type any password, then click **Approve** on the consent page.
