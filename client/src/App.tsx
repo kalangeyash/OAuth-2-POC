@@ -192,7 +192,7 @@ export function App() {
     <div className="app">
       <div className="synthetic-banner" role="note">
         <strong>DEMO / SYNTHETIC DATA</strong>
-        <p>This application uses a public sandbox containing synthetic healthcare data. Do not use real patient information.</p>
+        <p>This application uses a public sandbox containing synthetic healthcare data.</p>
       </div>
 
       <header className="masthead">
